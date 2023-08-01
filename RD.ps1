@@ -32,9 +32,9 @@ $Window = [Windows.Markup.XamlReader]::Load($Reader)
 ######Global Variables##########################################################
 
 $script:program_title = "Reddit Downloader"
-$script:version = "2.0"
+$script:version = "3.0"
 
-
+$script:ffmpeg = "C:\ffmpeg\bin\ffmpeg.exe"
 $script:site_list = new-object System.Collections.Hashtable
 $reddit_list_box = New-Object -TypeName System.Windows.Forms.CheckedListBox
 $settings = @{};
@@ -763,7 +763,7 @@ function add_subreddit_form($mode,$entry)
         $foldername.rootfolder = "MyComputer"
         if($add_subreddit_output.text)
         {
-            if(Test-Path $add_subreddit_output.text)
+            if(Test-Path -literalpath $add_subreddit_output.text)
             {
                 $foldername.SelectedPath = $add_subreddit_output.text
             }
@@ -994,7 +994,7 @@ function add_subreddit_form_checks
     }
     if($output_dir)
     {
-        if(!(Test-path $output_dir -PathType Container))
+        if(!(Test-path -literalpath $output_dir -PathType Container))
         {
             $errors = 1;
         }
@@ -1092,6 +1092,10 @@ function initial_checks
     {
         New-Item  -ItemType directory -Path "$dir\Resources"
     }
+    if(!(Test-Path -LiteralPath "$dir\Resources\Cache"))
+    {
+        New-Item  -ItemType directory -Path "$dir\Resources\Cache"
+    }
     if(!(Test-Path -LiteralPath "$dir\Downloads"))
     {
         New-Item  -ItemType directory -Path "$dir\Downloads"
@@ -1152,7 +1156,7 @@ function initial_checks
 ######Load Settings##############################################################
 function load_settings
 {
-    if(Test-Path "$dir\Resources\Settings.csv")
+    if(Test-Path -LiteralPath "$dir\Resources\Settings.csv")
     {
         $line_count = 0;
         $reader = [System.IO.File]::OpenText("$dir\Resources\Settings.csv")
@@ -1204,13 +1208,13 @@ function update_reddits
         $writer.write("$site,$entry_array`r`n");
     }
     $writer.close();
-    if(Test-Path "$dir\Resources\Reddits_Temp.csv")
+    if(Test-Path -LiteralPath "$dir\Resources\Reddits_Temp.csv")
     {
-        if(Test-Path "$dir\Resources\Reddits.csv")
+        if(Test-Path -LiteralPath "$dir\Resources\Reddits.csv")
         {
-            Remove-Item "$dir\Resources\Reddits.csv"
+            Remove-Item -LiteralPath "$dir\Resources\Reddits.csv"
         }
-        Rename-Item "$dir\Resources\Reddits_Temp.csv" "$dir\Resources\Reddits.csv"
+        Rename-Item -LiteralPath "$dir\Resources\Reddits_Temp.csv" "$dir\Resources\Reddits.csv"
     }
     ##################################################################################
     ###########Update List Box
@@ -1299,7 +1303,9 @@ function cycler
         $script:site_list = $using:site_list;
         $script:dir = $using:dir;
         $settings = $using:settings;
+        $script:ffmpeg = $using:ffmpeg
         
+
         $duplicates = new-object System.Collections.Hashtable
         $file_hashes = new-object System.Collections.Hashtable
 
@@ -1308,7 +1314,7 @@ function cycler
         write-output "--------------------------------------------------------------------------------------------------------------------------"
         Write-Output "Initializing"
         Write-Output "     Ingesting Media Hashes"
-        if(!(Test-Path "$dir\Resources\Hashes.csv"))
+        if(!(Test-Path -LiteralPath "$dir\Resources\Hashes.csv"))
         {
             New-Item "$dir\Resources\Hashes.csv" -ItemType File
         }
@@ -1323,7 +1329,7 @@ function cycler
                 Select-String '(?:^|,)(?=[^"]|(")?)"?((?(1)[^"]*|[^,"]*))"?(?=,|$)' -input $line -AllMatches | Foreach { [System.Collections.ArrayList]$line_split = $_.matches -replace '^,|"',''}
                 if(!($file_hashes.Contains($line_split[0])))
                 {
-                    if(Test-Path -literalpath $line_split[1])
+                    if(Test-Path -LiteralPath $line_split[1])
                     {
                         $counter++;
                         $file_hashes.Add($line_split[0],$line_split[1]);
@@ -1337,9 +1343,9 @@ function cycler
         ######Ingest Dupicates############################################################
         $duplicates = @{};
         Write-Output "     Ingesting Duplicates"
-        if(!(Test-Path "$dir\Resources\Duplicates.csv"))
+        if(!(Test-Path -LiteralPath "$dir\Resources\Duplicates.csv"))
         {
-            New-Item "$dir\Resources\Duplicates.csv" -ItemType File
+            New-Item -LiteralPath "$dir\Resources\Duplicates.csv" -ItemType File
         }
         else
         {
@@ -1399,7 +1405,7 @@ function cycler
                     write-output "PL-Processing $reddit_sub"
                     ##################################################################################
                     ######Validate Directory##########################################################
-                    if(!(Test-Path "$output_dir\$sub_dir"))
+                    if(!(Test-Path -LiteralPath "$output_dir\$sub_dir"))
                     {
                         New-Item -ItemType directory -Path "$output_dir\$sub_dir"
                     }
@@ -1423,7 +1429,7 @@ function cycler
                                 #Write-Output "Dup Maybe1 $fullpath"
                                 #write-output "Dup Maybe2 $other_path"
                                 #write-output "  "
-                                if((Test-path -literalpath $file_hashes[$hash]) -and (!($file_hashes[$hash] -match [regex]::Escape($fullpath))))
+                                if((Test-path -LiteralPath $file_hashes[$hash]) -and (!($file_hashes[$hash] -match [regex]::Escape($fullpath))))
                                 {
                                     write-output "     Duplicate File Removed: $fullpath"
                                     Remove-Item -literalpath $fullpath -force
@@ -1438,9 +1444,12 @@ function cycler
                     $writer.close();
                     ##################################################################################
                     ######Start Request###############################################################
+                    #write-output $full_url
+                    $response = "";
                     try
                     {
-                        $response = Invoke-WebRequest -Uri $full_url
+                        
+                        $response = Invoke-WebRequest -Uri $full_url -UseBasicParsing
                     }
                     catch
                     {
@@ -1460,16 +1469,18 @@ function cycler
                         ######Matching####################################################################
                         $pattern = '(http[s]?)(:\/\/)([^\s,]+)(?=")'
                         $matches = [regex]::Matches($response, $pattern)
-
+              
                         $counter = 0;
                         $counter_found = 0;
                         Foreach($media_url in ($matches | Select-Object -Unique) | sort value -Descending)
                         {
+                            #write-output $media_url
                             $virgin_media_url = $media_url
                             ##################################################################################
                             ######Pre-Duplicate Check#########################################################
                             if(!($duplicates.Contains($media_url.value)) -and (!($media_url -match "icon|thumb|award|_96|/comments/"))) #scrub
                             {
+                                $media_url = $media_url -replace '\?source=fallback',""
                                 ##################################################################################
                                 ######Most Media Check############################################################
                                 if((($media_url -match "jpg$|jpeg$|bmp$|gif$|png$|webp$|gifv$") -and ($images_on -eq "True")) -or (($media_url -match "mp4$") -and ($videos_on -eq "True")))
@@ -1479,8 +1490,8 @@ function cycler
                                     $save_name = $media_url
                                     $save_name = $save_name -replace "/DASH",""
                                     $save_name = Split-Path $save_name -Leaf
-                                    
-                                    if(!(Test-Path "$output_dir\$sub_dir\$save_name"))
+
+                                    if(!(Test-Path -LiteralPath "$output_dir\$sub_dir\$save_name"))
                                     {
                                         $counter_found++;
                                         write-output "     $counter_found = $media_url"
@@ -1489,7 +1500,46 @@ function cycler
                                         ######Download Image##############################################################
                                         #try
                                         #{
-                                            Start-BitsTransfer -Source $media_url -Destination "$output_dir\$sub_dir\$save_name" -TransferType Download
+                                            if(($media_url -match ".mp4") -and ($media_url -match "DASH"))
+                                            {
+                                                $audio_url = $media_url
+                                                $audio_url = $audio_url -replace "_240|_360|_480|_720|_1080", "_audio"
+                                                #write-output $audio_url
+                                                #write-output $media_url
+                                                if(Test-Path -LiteralPath "$dir\Resources\Cache\video.mp4")
+                                                {
+                                                    Remove-Item -LiteralPath "$dir\Resources\Cache\video.mp4"
+                                                }
+                                                if(Test-Path -LiteralPath "$dir\Resources\Cache\audio.mp4")
+                                                {
+                                                    Remove-Item -LiteralPath "$dir\Resources\Cache\audio.mp4"
+                                                }
+                                                Start-BitsTransfer -Source $media_url -Destination "$dir\Resources\Cache\video.mp4" -TransferType Download
+                                                Start-BitsTransfer -Source $audio_url -Destination "$dir\Resources\Cache\audio.mp4" -TransferType Download
+                                                if(Test-Path -LiteralPath "$dir\Resources\Cache\audio.mp4")
+                                                {
+                                                    try
+                                                    {
+                                                        $console = & cmd /u /c  "$script:ffmpeg -i `"$dir\Resources\Cache\video.mp4`" -i `"$dir\Resources\Cache\audio.mp4`" -hide_banner -loglevel error -c copy `"$output_dir\$sub_dir\$save_name`" -y"
+                                                    }
+                                                    catch
+                                                    {
+                                                        write-output $console
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    #No Audio File
+                                                    write-host "No Audio $save_name"
+                                                    Move-Item -LiteralPath "$dir\Resources\Cache\video.mp4" "$output_dir\$sub_dir\$save_name"
+                                                }
+                                            }
+                                            else
+                                            {
+                                                Start-BitsTransfer -Source $media_url -Destination "$output_dir\$sub_dir\$save_name" -TransferType Download
+                                            }
+
+                                            
                                             $duplicates.Add("$virgin_media_url","")
                                             Add-Content "$dir\Resources\Duplicates.csv" "$virgin_media_url"
 
@@ -1506,18 +1556,18 @@ function cycler
                                                 if($height -lt $min_height)
                                                 {
                                                     write-output "          Height too Small $height < $min_height...Deleted"
-                                                    if(Test-path -literalpath "$output_dir\$sub_dir\$save_name")
+                                                    if(Test-path -LiteralPath "$output_dir\$sub_dir\$save_name")
                                                     {
-                                                        Remove-Item -literalpath "$output_dir\$sub_dir\$save_name" -force
+                                                        Remove-Item -LiteralPath "$output_dir\$sub_dir\$save_name" -force
                                                     }
                                                     write-output "PL-$save_name Height too Small $height < $min_height...Deleted"
                                                 }
                                                 elseif($width -lt $min_width)
                                                 {
                                                     write-output "          Width too Small $width < $min_width...Deleted"   
-                                                    if(Test-path -literalpath "$output_dir\$sub_dir\$save_name")
+                                                    if(Test-path -LiteralPath "$output_dir\$sub_dir\$save_name")
                                                     {
-                                                        Remove-Item -literalpath "$output_dir\$sub_dir\$save_name" -force
+                                                        Remove-Item -LiteralPath "$output_dir\$sub_dir\$save_name" -force
                                                     }
                                                     write-output "PL-Width too Small $width < $min_width...Deleted"
                                                 }
@@ -1559,9 +1609,11 @@ function cycler
                                     ######Get Sub Page################################################################
                                     $response = "Failed"
                                     [string]$sub_url = $media_url
+
                                     try
                                     {
-                                        $response = Invoke-WebRequest -Uri $sub_url 
+                                        $response = Invoke-WebRequest -Uri $sub_url -UseBasicParsing
+
                                     }
                                     catch
                                     {
@@ -1636,7 +1688,7 @@ function cycler
             write-output "-------------------------------------------------------------"
             Write-Output "Running Post Operations"
             Write-Output "     Updating Hashes"
-            if(Test-Path "$dir\Resources\Hashes_temp.csv")
+            if(Test-Path -LiteralPath "$dir\Resources\Hashes_temp.csv")
             {
                 Remove-Item "$dir\Resources\Hashes_temp.csv"
                 
@@ -1654,11 +1706,11 @@ function cycler
             $writer.Close();
             if(Test-Path -literalpath "$dir\Resources\Hashes_temp.csv")
             {
-                if(Test-Path "$dir\Resources\Hashes.csv")
+                if(Test-Path -LiteralPath "$dir\Resources\Hashes.csv")
                 {
-                    Remove-Item "$dir\Resources\Hashes.csv"
+                    Remove-Item -LiteralPath "$dir\Resources\Hashes.csv"
                 }
-                Rename-Item "$dir\Resources\Hashes_temp.csv" "$dir\Resources\Hashes.csv"
+                Rename-Item -LiteralPath "$dir\Resources\Hashes_temp.csv" "$dir\Resources\Hashes.csv"
                 Write-Output "     Hashes Updated"
             }
             write-output "--------------------------------------------------------------------------------------------------------------------------"
@@ -1720,3 +1772,6 @@ function cycler
 initial_checks
 load_settings
 main
+#22 July 2023
+#Added Support for some videos not having audio
+#Added Support for some videos not being detected
