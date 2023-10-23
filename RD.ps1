@@ -1474,7 +1474,8 @@ function cycler
                         $counter_found = 0;
                         Foreach($media_url in ($matches | Select-Object -Unique) | sort value -Descending)
                         {
-                            #write-output $media_url
+                            #write-output "Media URL: $media_url"
+                            #Problems with Audio? Check DASHPLAYLIST.mpd file for Reddit API changes
                             $virgin_media_url = $media_url
                             ##################################################################################
                             ######Pre-Duplicate Check#########################################################
@@ -1502,39 +1503,55 @@ function cycler
                                         #{
                                             if(($media_url -match ".mp4") -and ($media_url -match "DASH"))
                                             {
-                                                $audio_url = $media_url
-                                                $audio_url = $audio_url -replace "_240|_360|_480|_720|_1080", "_audio"
-                                                #write-output $audio_url
-                                                #write-output $media_url
+                                                ######Clear Cache
                                                 if(Test-Path -LiteralPath "$dir\Resources\Cache\video.mp4")
                                                 {
                                                     Remove-Item -LiteralPath "$dir\Resources\Cache\video.mp4"
                                                 }
-                                                if(Test-Path -LiteralPath "$dir\Resources\Cache\audio.mp4")
-                                                {
-                                                    Remove-Item -LiteralPath "$dir\Resources\Cache\audio.mp4"
-                                                }
+
+                                                #####Download Video
+                                                write-output "               Downloading: $media_url"
                                                 Start-BitsTransfer -Source $media_url -Destination "$dir\Resources\Cache\video.mp4" -TransferType Download
-                                                Start-BitsTransfer -Source $audio_url -Destination "$dir\Resources\Cache\audio.mp4" -TransferType Download
-                                                if(Test-Path -LiteralPath "$dir\Resources\Cache\audio.mp4")
+                              
+
+                                                $audio_checks = ("_AUDIO_128","_AUDIO_64","_AUDIO");
+                                                foreach($check in $audio_checks)
                                                 {
-                                                    try
+                                                    if(Test-Path -LiteralPath "$dir\Resources\Cache\audio.mp4")
                                                     {
-                                                        $console = & cmd /u /c  "$script:ffmpeg -i `"$dir\Resources\Cache\video.mp4`" -i `"$dir\Resources\Cache\audio.mp4`" -hide_banner -loglevel error -c copy `"$output_dir\$sub_dir\$save_name`" -y"
+                                                        Remove-Item -LiteralPath "$dir\Resources\Cache\audio.mp4"
                                                     }
-                                                    catch
+                                                    $audio_url = $media_url
+                                                    $audio_url = $audio_url -replace "_240|_270|_360|_480|_720|_1080", "$check"
+                                                    write-output "               Checking Audio: $audio_url"
+                                                    Start-BitsTransfer -Source $audio_url -Destination "$dir\Resources\Cache\audio.mp4" -TransferType Download
+                                                    if(Test-Path -LiteralPath "$dir\Resources\Cache\audio.mp4")
                                                     {
-                                                        write-output $console
+                                                        try
+                                                        {
+                                                            $console = & cmd /u /c  "$script:ffmpeg -i `"$dir\Resources\Cache\video.mp4`" -i `"$dir\Resources\Cache\audio.mp4`" -hide_banner -loglevel error -c copy `"$output_dir\$sub_dir\$save_name`" -y"
+                                                        }
+                                                        catch
+                                                        {
+                                                            write-output $console
+                                                            write-output "Failed Audio"
+                                                        }
+                                                        break;
                                                     }
+                                                    else
+                                                    {
+                                                        #No Audio File
+                                                        write-output "               No Audio $save_name"
+                                                        Move-Item -LiteralPath "$dir\Resources\Cache\video.mp4" "$output_dir\$sub_dir\$save_name"
+                                                    }
+
                                                 }
-                                                else
-                                                {
-                                                    #No Audio File
-                                                    write-host "No Audio $save_name"
-                                                    Move-Item -LiteralPath "$dir\Resources\Cache\video.mp4" "$output_dir\$sub_dir\$save_name"
-                                                }
+                                                
+                                                
                                             }
-                                            else
+                                            ##############################
+                                            ######Not a "DASH" File
+                                            else 
                                             {
                                                 Start-BitsTransfer -Source $media_url -Destination "$output_dir\$sub_dir\$save_name" -TransferType Download
                                             }
