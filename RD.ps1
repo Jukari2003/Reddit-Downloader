@@ -32,16 +32,20 @@ $Window = [Windows.Markup.XamlReader]::Load($Reader)
 ######Global Variables##########################################################
 
 $script:program_title = "Reddit Downloader"
-$script:version = "3.0"
-
-$script:ffmpeg = "C:\ffmpeg\bin\ffmpeg.exe"
+$script:version = "3.5"
 $script:site_list = new-object System.Collections.Hashtable
-$reddit_list_box = New-Object -TypeName System.Windows.Forms.CheckedListBox
 $settings = @{};
 $script:list_box_select_status = 1;
 $script:list_box_lock = 0;
-
 $script:cycler_job = "";
+
+
+###Idle Timer
+if(Test-Path variable:Script:Timer){$Script:Timer.Dispose();}
+$Script:Timer = New-Object System.Windows.Forms.Timer                #Main system timer, most functions load through this timer
+$Script:Timer.Interval = 50
+$Script:CountDown = 1 
+if(Test-Path variable:Script:Form){Remove-Variable Form}
 
 #################################################################################
 #####Main########################################################################
@@ -49,16 +53,20 @@ function main
 {
     ##################################################################################
     ###########Main Form
-    $Form = New-Object System.Windows.Forms.Form
-    $Form.Location = "200, 200"
-    $Form.Font = "Copperplate Gothic,8.1"
-    $Form.FormBorderStyle = "FixedDialog"
-    $Form.ForeColor = "Black"
-    $Form.BackColor = "#434343"
-    $Form.Text = "  Reddit Downloader"
-    $Form.Width = 630 #1245
-    $Form.Height = 500
-    #$Form.ClientSize = "530,450"
+    $first = 0;
+    if(!(Test-Path variable:Script:Form))
+    {
+        $first = 1;
+        $script:Form = New-Object System.Windows.Forms.Form
+        $script:Form.Location = "200, 200"
+        $script:Form.Font = "Copperplate Gothic,8.1"
+        $script:Form.ForeColor = "Black"
+        $script:Form.BackColor = "#434343"
+        $script:Form.Text = "  Reddit Downloader"
+        $script:Form.Width = 1300 #1245
+        $script:Form.Height = 900
+        #$script:Form.ClientSize = "530,450"
+    }
 
 
     ##################################################################################
@@ -68,71 +76,68 @@ function main
     $title1.Font       = New-Object System.Drawing.Font("Copperplate Gothic Bold",21,[System.Drawing.FontStyle]::Regular)
     $title1.Text       = $script:program_title
     $title1.TextAlign  = "MiddleCenter"
-    $title1.Width      = $Form.Width
-    $title1.height     = 35
     $title1.ForeColor  = "white"
-    $title1.Location   = New-Object System.Drawing.Size((($Form.width / 2) - ($Form.width / 2)),$y_pos)
-    $Form.Controls.Add($title1)
+    $title1.Size       =  New-Object System.Drawing.Size($script:Form.Width,45)
+    $title1.Location   = New-Object System.Drawing.Size((($script:Form.width / 2) - ($script:Form.width / 2)),$y_pos)
+    $script:Form.Controls.Add($title1)
 
     ##################################################################################
     ###########Title Written By
-    $y_pos = $y_pos + 30
+    $y_pos = $y_pos + 35
     $title2            = New-Object System.Windows.Forms.Label
     $title2.Font       = New-Object System.Drawing.Font("Copperplate Gothic",7.5,[System.Drawing.FontStyle]::Regular)
-    $title2.Text       = "Written by: Anthony Brechtel`nVer $script:version"
+    $title2.Text       = "Ver $script:version"
     $title2.TextAlign  = "MiddleCenter"
     $title2.ForeColor  = "darkgray"
-    $title2.Width      = $Form.Width
-    $title2.Height     = 40
-    $title2.Location   = New-Object System.Drawing.Size((($Form.width / 2) - ($Form.width / 2)),$y_pos)
-    $Form.Controls.Add($title2)
+    $title2.Size       =  New-Object System.Drawing.Size($script:Form.Width,35)
+    $title2.Location   = New-Object System.Drawing.Size((($script:Form.width / 2) - ($script:Form.width / 2)),$y_pos)
+    $script:Form.Controls.Add($title2)
 
     ###########List Box
     $y_pos = $y_pos + 40
-    
-    $reddit_list_box.Location = New-Object System.Drawing.Size(20,$y_pos)
-    $reddit_list_box.Size = New-Object System.Drawing.Size(400,300)
-    $reddit_list_box.Size = New-Object System.Drawing.Size(400,300)
-    $reddit_list_box.Font = New-Object System.Drawing.Font("Lucida Console",12,[System.Drawing.FontStyle]::Regular)
+    $script:reddit_list_box = New-Object -TypeName System.Windows.Forms.CheckedListBox
+    $script:reddit_list_box.Location = New-Object System.Drawing.Size(20,$y_pos)
+    $script:reddit_list_box.Size = New-Object System.Drawing.Size((($script:Form.Width / 3) *2),(($script:Form.height - ($y_pos + 140))))
+    $script:reddit_list_box.Font = New-Object System.Drawing.Font("Lucida Console",12,[System.Drawing.FontStyle]::Regular)
 
-    [void] $reddit_list_box.Items.add("Select All")
-    $reddit_list_box.SetItemChecked($reddit_list_box.Items.IndexOf("Select All"), $true);
-    if($site_list.count -ne 0)
+    [void] $script:reddit_list_box.Items.add("Select All")
+    $script:reddit_list_box.SetItemChecked($script:reddit_list_box.Items.IndexOf("Select All"), $true);
+    if($script:site_list.count -ne 0)
     {
-        foreach($reddit in $site_list.getEnumerator() | sort key)
+        foreach($reddit in $script:site_list.getEnumerator() | sort key)
         {
             $site = $reddit.key
             $entry_array = csv_line_to_array $reddit.value
-            [void] $reddit_list_box.Items.add("$site")
+            [void] $script:reddit_list_box.Items.add("$site")
             if($entry_array[0] -eq "True")
             {
-                if($site_list.contains("$site")) #Check the items that the user had checked last
+                if($script:site_list.contains("$site")) #Check the items that the user had checked last
                 {
-                    $reddit_list_box.SetItemChecked($reddit_list_box.Items.IndexOf("$site"), $true);
+                    $script:reddit_list_box.SetItemChecked($script:reddit_list_box.Items.IndexOf("$site"), $true);
                 }
                 ##Update Select Item
                 if($script:list_box_select_status -eq 1)
                 {
-                    $reddit_list_box.SetItemChecked($reddit_list_box.Items.IndexOf("Select All"),$true);
-                    $reddit_list_box.items[$reddit_list_box.Items.IndexOf("Select All")] = "Select None"
+                    $script:reddit_list_box.SetItemChecked($script:reddit_list_box.Items.IndexOf("Select All"),$true);
+                    $script:reddit_list_box.items[$script:reddit_list_box.Items.IndexOf("Select All")] = "Select None"
                     $script:list_box_select_status = 0;
                 }
             }
             else
             {
                 
-                if($site_list.contains("$site")) #Check the items that the user had checked last
+                if($script:site_list.contains("$site")) #Check the items that the user had checked last
                 {
-                    $reddit_list_box.SetItemChecked($reddit_list_box.Items.IndexOf("$site"), $false);
+                    $script:reddit_list_box.SetItemChecked($script:reddit_list_box.Items.IndexOf("$site"), $false);
                 }
             }  
         }
     }
-    $reddit_list_box.Add_ItemCheck({
+    $script:reddit_list_box.Add_ItemCheck({
         if(($this.text) -and (!($this.text -match "^Select")))
         {
             $reddit = $this.text
-            $entry_array = csv_line_to_array $site_list[$reddit]     
+            $entry_array = csv_line_to_array $script:site_list[$reddit]     
             if($entry_array[0] -eq "True")
             {
                 $entry_array[0] = "False"
@@ -148,11 +153,11 @@ function main
             $line = csv_write_line $line $entry_array[3]
             $line = csv_write_line $line $entry_array[4]
             $line = csv_write_line $line $entry_array[5]
-            $site_list[$reddit] = $line
+            $script:site_list[$reddit] = $line
             update_reddits
         }
     })
-    $reddit_list_box.Add_SelectedValueChanged({
+    $script:reddit_list_box.Add_SelectedValueChanged({
         if((!($this.text -match "^Select")) -and ($this.text -ne ""))
         {
             update_side_info($this.text)
@@ -160,8 +165,8 @@ function main
         elseif(($this.text -match "Select All") -and ($script:list_box_lock -ne 1))
         {
             $script:list_box_lock = 1;
-                    $reddit_list_box.SetItemChecked($reddit_list_box.Items.IndexOf("Select All"),$true);
-                    $reddit_list_box.items[$reddit_list_box.Items.IndexOf("Select All")] = "Select None"
+                    $script:reddit_list_box.SetItemChecked($script:reddit_list_box.Items.IndexOf("Select All"),$true);
+                    $script:reddit_list_box.items[$script:reddit_list_box.Items.IndexOf("Select All")] = "Select None"
                     $script:list_box_select_status = 0;
                     foreach($item in $($script:site_list.keys))
                     {
@@ -174,8 +179,8 @@ function main
         elseif(($this.text -match "Select None") -and ($script:list_box_lock -ne 1))
         {
             $script:list_box_lock = 1;
-                    $reddit_list_box.SetItemChecked($reddit_list_box.Items.IndexOf("Select None"),$false);
-                    $reddit_list_box.items[$reddit_list_box.Items.IndexOf("Select None")] = "Select All"
+                    $script:reddit_list_box.SetItemChecked($script:reddit_list_box.Items.IndexOf("Select None"),$false);
+                    $script:reddit_list_box.items[$script:reddit_list_box.Items.IndexOf("Select None")] = "Select All"
                     $script:list_box_select_status = 0;
                     foreach($item in $($script:site_list.keys))
                     {
@@ -192,13 +197,13 @@ function main
 
 
 
-    $Form.Controls.Add($reddit_list_box)
+    $script:Form.Controls.Add($script:reddit_list_box)
     ##################################################################################
     ###########Add Reddit Button
     $y_pos = $y_pos
     $button_Add_Reddit = New-Object System.Windows.Forms.Button
-    $button_Add_Reddit.Location = "433, $y_pos"
-    $button_Add_Reddit.Size = "180, 23"
+    $button_Add_Reddit.Location = New-Object System.Drawing.Size(($script:reddit_list_box.location.x + $script:reddit_list_box.width + 10), $y_pos)
+    $button_Add_Reddit.Size = New-Object System.Drawing.Size((($script:Form.width / 3) - 65), 30)
     $button_Add_Reddit.ForeColor = "White"
     $button_Add_Reddit.Backcolor = "#606060"
     $button_Add_Reddit.Text = "Add Subreddit"
@@ -207,197 +212,197 @@ function main
         add_subreddit_form "Add"
     
     })
-    $Form.Controls.Add($button_Add_Reddit)
+    $script:Form.Controls.Add($button_Add_Reddit)
 
     ##################################################################################
     ###########Edit Reddit Button
-    $y_pos = $y_pos + 30
+    $y_pos = $y_pos + 35
     $button_Edit_Reddit = New-Object System.Windows.Forms.Button
-    $button_Edit_Reddit.Location = "433, $y_pos"
-    $button_Edit_Reddit.Size = "180, 23"
+    $button_Edit_Reddit.Location = New-Object System.Drawing.Size($button_Add_Reddit.location.x, $y_pos)
+    $button_Edit_Reddit.Size = New-Object System.Drawing.Size($button_Add_Reddit.width, 30)
     $button_Edit_Reddit.ForeColor = "White"
     $button_Edit_Reddit.Backcolor = "#606060"
     $button_Edit_Reddit.Text = "Edit Subreddit"
     $button_Edit_Reddit.Add_Click({
-        $entry = $reddit_list_box.SelectedItem
+        $entry = $script:reddit_list_box.SelectedItem
         if($entry -match "r/|u/")
         {
             add_subreddit_form "Edit" "$entry"
         } 
     })
-    $Form.Controls.Add($button_Edit_Reddit)
+    $script:Form.Controls.Add($button_Edit_Reddit)
 
 
     ##################################################################################
     ###########Remove Reddit Button
-    $y_pos = $y_pos + 30
+    $y_pos = $y_pos + 35
     $button_Remove_Reddit = New-Object System.Windows.Forms.Button
-    $button_Remove_Reddit.Location = "433, $y_pos"
-    $button_Remove_Reddit.Size = "180, 23"
+    $button_Remove_Reddit.Location = New-Object System.Drawing.Size($button_Add_Reddit.location.x, $y_pos)
+    $button_Remove_Reddit.Size = New-Object System.Drawing.Size($button_Add_Reddit.width, 30)
     $button_Remove_Reddit.ForeColor = "White"
     $button_Remove_Reddit.Backcolor = "#606060"
     $button_Remove_Reddit.Text = "Remove Subreddit"
     $button_Remove_Reddit.add_Click({
-        $entry = $reddit_list_box.SelectedItem
+        $entry = $script:reddit_list_box.SelectedItem
         if($entry -match "r/|u/")
         {
             $message = "Are you sure you want to delete $entry ?`n`n"
             $yesno = [System.Windows.Forms.MessageBox]::Show("$message","Delete $entry ?", "YesNo" , "Information" , "Button1")
             if($yesno -eq "Yes")
             {
-                $site_list.Remove($entry);
+                $script:site_list.Remove($entry);
                 update_reddits
             }
         }
     })
-    $Form.Controls.Add($button_Remove_Reddit)
+    $script:Form.Controls.Add($button_Remove_Reddit)
 
     ##################################################################################
     ###########Separator Bar 1
-    $y_pos = $y_pos + 25;
+    $y_pos = (($script:Form.height / 3))
     $separator_bar1                             = New-Object system.Windows.Forms.Label
     $separator_bar1.text                        = ""
     $separator_bar1.AutoSize                    = $false
     $separator_bar1.BorderStyle                 = "fixed3d"
     #$separator_bar1.ForeColor                   = $script:settings['DIALOG_BOX_TEXT_BOLD_COLOR']
     $separator_bar1.Anchor                      = 'top,left'
-    $separator_bar1.width                       = 180
+    $separator_bar1.width                       = $button_Add_Reddit.width
     $separator_bar1.height                      = 1
-    $separator_bar1.location                    = New-Object System.Drawing.Point(433,$y_pos)
+    $separator_bar1.location                    = New-Object System.Drawing.Point($button_Add_Reddit.location.x,$y_pos)
     $separator_bar1.TextAlign                   = 'MiddleLeft'
-    $Form.controls.Add($separator_bar1);
+    $script:Form.controls.Add($separator_bar1);
 
     
 
     ##################################################################################
     ###########Subreddit Title
-    $y_pos = $y_pos + 1;
+    $y_pos = $y_pos + 3;
     $reddit_title            = New-Object System.Windows.Forms.Label   
     $reddit_title.Font       = New-Object System.Drawing.Font("Copperplate Gothic Bold",9,[System.Drawing.FontStyle]::Regular)
     $reddit_title.Text       = ""
     $reddit_title.TextAlign  = "MiddleCenter"
-    $reddit_title.Width      = 180
-    $reddit_title.height     = 25
+    $reddit_title.Width      = $button_Add_Reddit.width
+    $reddit_title.height     = 35
     $reddit_title.ForeColor  = "white"
-    $reddit_title.Location   = New-Object System.Drawing.Point(433,$y_pos)
-    $Form.Controls.Add($reddit_title)
+    $reddit_title.Location   = New-Object System.Drawing.Point($button_Add_Reddit.location.x,$y_pos)
+    $script:Form.Controls.Add($reddit_title)
 
 
-    $y_pos = $y_pos + 20;
+    $y_pos = $y_pos + 30;
     $images_label            = New-Object System.Windows.Forms.Label   
     $images_label.Font       = New-Object System.Drawing.Font("Copperplate Gothic Bold",7,[System.Drawing.FontStyle]::Regular)
     $images_label.Text       = "Images:"
     $images_label.TextAlign  = "MiddleRight"
     $images_label.Width      = 80
-    $images_label.height     = 25
+    $images_label.height     = 30
     $images_label.ForeColor  = "white"
-    $images_label.Location   = New-Object System.Drawing.Point(400,$y_pos)
-    $Form.Controls.Add($images_label)
+    $images_label.Location   = New-Object System.Drawing.Point($button_Add_Reddit.location.x,$y_pos)
+    $script:Form.Controls.Add($images_label)
 
     $images_value                = New-Object System.Windows.Forms.Label  
     $images_value.Font           = New-Object System.Drawing.Font("Copperplate Gothic",7,[System.Drawing.FontStyle]::Regular)
     $images_value.Text           = "N/A"
     $images_value.TextAlign      = "MiddleLeft"
-    $images_value.Width          = 130
+    $images_value.Width          = ($button_Add_Reddit.width - 80)
     $images_value.height         = 20
     $images_value.accessiblename = ""
     $images_value.ForeColor      = "white"
     $images_value.Location       = New-Object System.Drawing.Point(($images_label.location.x + $images_label.Width + 2),$y_pos)
-    $Form.Controls.Add($images_value)
+    $script:Form.Controls.Add($images_value)
 
 
-    $y_pos = $y_pos + 20;
+    $y_pos = $y_pos + 30;
     $videos_label            = New-Object System.Windows.Forms.Label   
     $videos_label.Font       = New-Object System.Drawing.Font("Copperplate Gothic Bold",7,[System.Drawing.FontStyle]::Regular)
     $videos_label.Text       = "Videos:"
     $videos_label.TextAlign  = "MiddleRight"
     $videos_label.Width      = 80
-    $videos_label.height     = 25
+    $videos_label.height     = 30
     $videos_label.ForeColor  = "white"
-    $videos_label.Location   = New-Object System.Drawing.Point(400,$y_pos)
-    $Form.Controls.Add($videos_label)
+    $videos_label.Location   = New-Object System.Drawing.Point($button_Add_Reddit.location.x,$y_pos)
+    $script:Form.Controls.Add($videos_label)
 
     $videos_value                = New-Object System.Windows.Forms.Label  
     $videos_value.Font           = New-Object System.Drawing.Font("Copperplate Gothic",7,[System.Drawing.FontStyle]::Regular)
     $videos_value.Text           = "N/A"
     $videos_value.TextAlign      = "MiddleLeft"
-    $videos_value.Width          = 130
-    $videos_value.height         = 20
+    $videos_value.Width          = ($button_Add_Reddit.width - 80)
+    $videos_value.height         = 30
     $videos_value.accessiblename = ""
     $videos_value.ForeColor      = "white"
     $videos_value.Location       = New-Object System.Drawing.Point(($videos_label.location.x + $videos_label.Width + 2),$y_pos)
-    $Form.Controls.Add($videos_value)
+    $script:Form.Controls.Add($videos_value)
 
-    $y_pos = $y_pos + 20;
+    $y_pos = $y_pos + 30;
     $width_label            = New-Object System.Windows.Forms.Label   
     $width_label.Font       = New-Object System.Drawing.Font("Copperplate Gothic Bold",7,[System.Drawing.FontStyle]::Regular)
     $width_label.Text       = "Width:"
     $width_label.TextAlign  = "MiddleRight"
     $width_label.Width      = 80
-    $width_label.height     = 25
+    $width_label.height     = 30
     $width_label.ForeColor  = "white"
-    $width_label.Location   = New-Object System.Drawing.Point(400,$y_pos)
-    $Form.Controls.Add($width_label)
+    $width_label.Location   = New-Object System.Drawing.Point($button_Add_Reddit.location.x,$y_pos)
+    $script:Form.Controls.Add($width_label)
 
     $width_value                = New-Object System.Windows.Forms.Label  
     $width_value.Font           = New-Object System.Drawing.Font("Copperplate Gothic",7,[System.Drawing.FontStyle]::Regular)
     $width_value.Text           = "N/A"
     $width_value.TextAlign      = "MiddleLeft"
-    $width_value.Width          = 130
-    $width_value.height         = 20
+    $width_value.Width          = ($button_Add_Reddit.width - 80)
+    $width_value.height         = 30
     $width_value.accessiblename = ""
     $width_value.ForeColor      = "white"
     $width_value.Location       = New-Object System.Drawing.Point(($width_label.location.x + $width_label.Width + 2),$y_pos)
-    $Form.Controls.Add($width_value)
+    $script:Form.Controls.Add($width_value)
 
-    $y_pos = $y_pos + 20;
+    $y_pos = $y_pos + 30;
     $height_label            = New-Object System.Windows.Forms.Label   
     $height_label.Font       = New-Object System.Drawing.Font("Copperplate Gothic Bold",7,[System.Drawing.FontStyle]::Regular)
     $height_label.Text       = "Height:"
     $height_label.TextAlign  = "MiddleRight"
     $height_label.Width      = 80
-    $height_label.height     = 25
+    $height_label.height     = 30
     $height_label.ForeColor  = "white"
-    $height_label.Location   = New-Object System.Drawing.Point(400,$y_pos)
-    $Form.Controls.Add($height_label)
+    $height_label.Location   = New-Object System.Drawing.Point($button_Add_Reddit.location.x,$y_pos)
+    $script:Form.Controls.Add($height_label)
 
     $height_value                = New-Object System.Windows.Forms.Label  
     $height_value.Font           = New-Object System.Drawing.Font("Copperplate Gothic",7,[System.Drawing.FontStyle]::Regular)
     $height_value.Text           = "N/A"
     $height_value.TextAlign      = "MiddleLeft"
-    $height_value.Width          = 130
-    $height_value.height         = 20
+    $height_value.Width          = ($button_Add_Reddit.width - 80)
+    $height_value.height         = 30
     $height_value.accessiblename = ""
     $height_value.ForeColor      = "white"
     $height_value.Location       = New-Object System.Drawing.Point(($height_label.location.x + $height_label.Width + 2),$y_pos)
-    $Form.Controls.Add($height_value)
+    $script:Form.Controls.Add($height_value)
 
-    $y_pos = $y_pos + 20;
+    $y_pos = $y_pos + 30;
     $output_label            = New-Object System.Windows.Forms.Label   
     $output_label.Font       = New-Object System.Drawing.Font("Copperplate Gothic Bold",7,[System.Drawing.FontStyle]::Regular)
     $output_label.Text       = "Output:"
     $output_label.TextAlign  = "MiddleRight"
     $output_label.Width      = 80
-    $output_label.height     = 25
+    $output_label.height     = 30
     $output_label.ForeColor  = "white"
-    $output_label.Location   = New-Object System.Drawing.Point(400,$y_pos)
-    $Form.Controls.Add($output_label)
+    $output_label.Location   = New-Object System.Drawing.Point($button_Add_Reddit.location.x,$y_pos)
+    $script:Form.Controls.Add($output_label)
 
     $output_value                = New-Object System.Windows.Forms.Label  
     $output_value.Font           = New-Object System.Drawing.Font("Copperplate Gothic",7,[System.Drawing.FontStyle]::Regular)
     $output_value.Text           = "N/A"
     $output_value.TextAlign      = "MiddleLeft"
-    $output_value.width          = 130
-    $output_value.height         = 25
+    $output_value.width          = ($button_Add_Reddit.width - 80)
+    $output_value.height         = 30
     $output_value.accessiblename = "N/A"
     $output_value.ForeColor      = "white"
     $output_value.Location       = New-Object System.Drawing.Point(($output_label.location.x + $output_label.width + 2),$y_pos)
-    $Form.Controls.Add($output_value)
+    $script:Form.Controls.Add($output_value)
 
-    $y_pos = $y_pos + 26
+    $y_pos = $y_pos + 35
     $open_output_dir = New-Object System.Windows.Forms.Button
-    $open_output_dir.Location = "433, $y_pos"
-    $open_output_dir.Size = "180, 23"
+    $open_output_dir.location = New-Object System.Drawing.Point($button_Add_Reddit.location.x,$y_pos)
+    $open_output_dir.Size = New-Object System.Drawing.Point($button_Add_Reddit.width, 30)
     $open_output_dir.ForeColor = "White"
     $open_output_dir.Backcolor = "#606060"
     $open_output_dir.Text = "Open Output Dir"
@@ -407,22 +412,22 @@ function main
         Invoke-Item -literalpath $this.accessiblename
 
     })
-    $Form.Controls.Add($open_output_dir)
+    $script:Form.Controls.Add($open_output_dir)
 
     ##################################################################################
     ###########Separator Bar 2
-    $y_pos = $y_pos + 28;
+    $y_pos = $y_pos = (($script:Form.height / 3) * 2)
     $separator_bar2                             = New-Object system.Windows.Forms.Label
     $separator_bar2.text                        = ""
     $separator_bar2.AutoSize                    = $false
     $separator_bar2.BorderStyle                 = "fixed3d"
     #$separator_bar2.ForeColor                   = $script:settings['DIALOG_BOX_TEXT_BOLD_COLOR']
     $separator_bar2.Anchor                      = 'top,left'
-    $separator_bar2.width                       = 180
+    $separator_bar2.width                       = $button_Add_Reddit.width
     $separator_bar2.height                      = 1
-    $separator_bar2.location                    = New-Object System.Drawing.Point(433,$y_pos)
+    $separator_bar2.location                    = New-Object System.Drawing.Point($button_Add_Reddit.location.x,$y_pos)
     $separator_bar2.TextAlign                   = 'MiddleLeft'
-    $Form.controls.Add($separator_bar2);
+    $script:Form.controls.Add($separator_bar2);
 
     ##################################################################################
     ###########Progress Bar
@@ -431,12 +436,12 @@ function main
     $progress_bar.Value = 0
     $progress_bar.Style="Continuous"
     $System_Drawing_Size = New-Object System.Drawing.Size
-    $System_Drawing_Size.Width = $Form.width - 40
+    $System_Drawing_Size.Width = $script:Form.width - 60
     $System_Drawing_Size.Height = 30
     $progress_bar.Size = $System_Drawing_Size
-    $progress_bar.Location = New-Object System.Drawing.Size($reddit_list_box.location.x, ($reddit_list_box.location.y + $reddit_list_box.height - 3));
+    $progress_bar.Location = New-Object System.Drawing.Size($script:reddit_list_box.location.x, ($script:reddit_list_box.location.y + $script:reddit_list_box.height + 3));
     $progress_bar.Value = "0"
-    $Form.Controls.Add($progress_bar)
+    $script:Form.Controls.Add($progress_bar)
 
     ##################################################################################
     ###########Progress Bar Status Label
@@ -447,7 +452,7 @@ function main
     $progress_bar_label.TextAlign  = "MiddleCenter"
     $progress_bar_label.ForeColor = "White"
     $progress_bar_label.Text = "Not Running"
-    $Form.Controls.Add($progress_bar_label)
+    $script:Form.Controls.Add($progress_bar_label)
 
 
     ##################################################################################
@@ -457,18 +462,18 @@ function main
     $interval_label.Font       = New-Object System.Drawing.Font("Copperplate Gothic Bold",7,[System.Drawing.FontStyle]::Regular)
     $interval_label.Text       = "Run Interval:"
     $interval_label.TextAlign  = "MiddleRight"
-    $interval_label.Width      = 100
+    $interval_label.Width      = (($button_Add_Reddit.width / 2))
     $interval_label.height     = 25
     $interval_label.ForeColor  = "white"
-    $interval_label.Location   = New-Object System.Drawing.Point(425,$y_pos)
-    $Form.Controls.Add($interval_label)
+    $interval_label.Location   = New-Object System.Drawing.Point($button_Add_Reddit.location.x,$y_pos)
+    $script:Form.Controls.Add($interval_label)
 
     $interval_input                        = New-Object system.Windows.Forms.TextBox                       
     $interval_input.AutoSize                 = $true
     $interval_input.ForeColor                = "Black"
     $interval_input.BackColor                = "White"
     $interval_input.Anchor                   = 'top,left'
-    $interval_input.width                    = (50)
+    $interval_input.width                    = 80
     $interval_input.height                   = 3
     $interval_input.text                     = $script:settings["SLEEP_TIMER"]
     $interval_input.location                 = New-Object System.Drawing.Point(($interval_label.Location.x + $interval_label.width + 5),$y_pos)
@@ -484,26 +489,26 @@ function main
         }
 
     })
-    $Form.controls.Add($interval_input);
+    $script:Form.controls.Add($interval_input);
 
     $interval_min_label            = New-Object System.Windows.Forms.Label   
     $interval_min_label.Font       = New-Object System.Drawing.Font("Copperplate Gothic Bold",6,[System.Drawing.FontStyle]::Regular)
     $interval_min_label.Text       = "Mins"
     $interval_min_label.TextAlign  = "bottomLeft"
-    $interval_min_label.Width      = 100
+    $interval_min_label.Width      = 120
     $interval_min_label.height     = 20
     $interval_min_label.ForeColor  = "white"
     $interval_min_label.Location   = New-Object System.Drawing.Point(($interval_input.Location.x + $interval_input.width + 1),$y_pos)
-    $Form.Controls.Add($interval_min_label)
+    $script:Form.Controls.Add($interval_min_label)
 
 
 
     ##################################################################################
     ###########Download Reddits Button
-    $y_pos = $y_pos + 25
+    $y_pos = $y_pos + 30
     $download_reddits = New-Object System.Windows.Forms.Button
-    $download_reddits.Location = "433, $y_pos"
-    $download_reddits.Size = "180, 23"
+    $download_reddits.Location = New-Object System.Drawing.Point($button_Add_Reddit.location.x, $y_pos)
+    $download_reddits.Size = New-Object System.Drawing.Point($button_Add_Reddit.width, 30)
     $download_reddits.ForeColor = "White"
     $download_reddits.Backcolor = "#606060"
     $download_reddits.Text = "Download Reddits"
@@ -511,13 +516,11 @@ function main
         if($this.text -eq "Download Reddits")
         {
             $this.Text = "Stop Running..."
-            $reddit_list_box.enabled = $false
+            $progress_bar_label.Text = "Thinking..."
+            $script:reddit_list_box.enabled = $false
             $button_Add_Reddit.enabled = $false
             $button_Edit_Reddit.enabled = $false
             $button_Remove_Reddit.enabled = $false
-
-
-
             cycler
         }
         else
@@ -527,35 +530,35 @@ function main
             $this.Text = "Download Reddits"
             $progress_bar.Value = "0"
             $progress_bar_label.Text = "Not Running"
-            $reddit_list_box.enabled = $true
+            $script:reddit_list_box.enabled = $true
             $button_Add_Reddit.enabled = $true
             $button_Edit_Reddit.enabled = $true
             $button_Remove_Reddit.enabled = $true
         }
 
     })
-    $Form.Controls.Add($download_reddits)
+    $script:Form.Controls.Add($download_reddits)
     ####################################################
-    if($reddit_list_box.Items.count -ge 2)
+    if($script:reddit_list_box.Items.count -ge 2)
     {
-        $reddit_list_box.SelectedIndex = 1
+        $script:reddit_list_box.SelectedIndex = 1
     }
 
-    $form.Add_Shown({
+    #$script:Form.Add_Shown({
+    #$message = "WARNING: This software is not to be used to overload, spam, or DDoS Reddit servers. Please use sparingly with high intervals for long periods of use. I am not responsible for the misuse of this software!"
+    #[System.Windows.MessageBox]::Show($message,"!!!WARNING!!!",'Ok')
+    #});
 
-    $message = "WARNING: This software is not to be used to overload, spam, or DDoS Reddit servers. Please use sparingly with high intervals for long periods of use. I am not responsible for the misuse of this software!"
-    [System.Windows.MessageBox]::Show($message,"!!!WARNING!!!",'Ok')
-
-    });
-
-
-    [void] $Form.ShowDialog()
+    if($first -eq 1)
+    {
+        [void] $script:Form.ShowDialog()  
+    }
 }
 ################################################################################
 ######Update Side Info##########################################################
 function update_side_info($reddit)
 {        
-    $reddit_array = csv_line_to_array $site_list[$reddit]
+    $reddit_array = csv_line_to_array $script:site_list[$reddit]
     $status  = $reddit_array[0]
     $output  = $reddit_array[1]
     $height  = $reddit_array[2]
@@ -605,7 +608,6 @@ function update_side_info($reddit)
     if(Test-Path -literalpath $output_shorthand)
     {
         $open_output_dir.AccessibleName = $output_shorthand
-        write-host $open_output_dir
     }
     elseif(Test-path -LiteralPath $output)
     {
@@ -616,9 +618,10 @@ function update_side_info($reddit)
         $open_output_dir.AccessibleName = $dir
     }
 
-    if($output_shorthand.length -gt 14)
+    [int]$offset = ($output_value.width / 8.5)
+    if($output_shorthand.length -gt $offset)
     {
-        $output_shorthand = "..." + $output_shorthand.substring(($output_shorthand.length - 14),14)
+        $output_shorthand = "..." + $output_shorthand.substring(($output_shorthand.length - $offset),$offset)
     }
 
     $output_value.Text = $output_shorthand
@@ -784,7 +787,7 @@ function add_subreddit_form($mode,$entry)
     $minimum_media_width_label.Location = "15,$y_pos"
     $minimum_media_width_label.Size = "177,23"
     $minimum_media_width_label.ForeColor = "White"
-    $minimum_media_width_label.Text = "Minimum Image Width:"
+    $minimum_media_width_label.Text = "Minimum Width:"
     $add_subreddit_form.Controls.Add($minimum_media_width_label)
 
     ##################################################################################
@@ -858,7 +861,7 @@ function add_subreddit_form($mode,$entry)
     $minimum_media_height_label.Location = "15,$y_pos"
     $minimum_media_height_label.Size = "180,23"
     $minimum_media_height_label.ForeColor = "White"
-    $minimum_media_height_label.Text = "Minimum Image Height:"
+    $minimum_media_height_label.Text = "Minimum Height:"
     $add_subreddit_form.Controls.Add($minimum_media_height_label)
 
 
@@ -926,7 +929,7 @@ function add_subreddit_form($mode,$entry)
 
     if($mode -eq "Edit")
     {
-            $entry_array = csv_line_to_array $site_list[$entry]
+            $entry_array = csv_line_to_array $script:site_list[$entry]
             $add_subreddit_output.text = $entry_array[1]
             $minimum_media_height_input.text = $entry_array[2]
             $minimum_media_width_input.text = $entry_array[3]
@@ -976,7 +979,7 @@ function add_subreddit_form_checks
         }
         else
         {
-            if($site_list[$complete])
+            if($script:site_list[$complete])
             {
                 if($mode -ne "Edit")
                 {
@@ -1033,9 +1036,9 @@ function save_subreddit
         $old_subtype = $old_url_split[1]
         $old_subreddit = $old_url_split[2]
         $old_complete = "$old_subtype/$old_subreddit"
-        if($site_list.ContainsKey($old_complete))
+        if($script:site_list.ContainsKey($old_complete))
         {
-            $site_list.remove($old_complete);
+            $script:site_list.remove($old_complete);
         }
     }
 
@@ -1056,7 +1059,7 @@ function save_subreddit
     #write-host $min_width
     #write-host $videos
     #write-host $images
-    if($site_list.ContainsKey($complete))
+    if($script:site_list.ContainsKey($complete))
     {
         #Editing
         $line = "";
@@ -1066,7 +1069,7 @@ function save_subreddit
         $line = csv_write_line $line $min_width       
         $line = csv_write_line $line $images
         $line = csv_write_line $line $videos
-        $site_list[$complete] = $line
+        $script:site_list[$complete] = $line
     }
     else
     {
@@ -1078,7 +1081,7 @@ function save_subreddit
         $line = csv_write_line $line $min_width
         $line = csv_write_line $line $images
         $line = csv_write_line $line $videos
-        $site_list.Add($complete,$line);      
+        $script:site_list.Add($complete,$line);      
     }
     update_settings
     update_reddits
@@ -1100,7 +1103,10 @@ function initial_checks
     {
         New-Item  -ItemType directory -Path "$dir\Downloads"
     }
+
+
     ###################################################################################
+    ###Build Default Settings #########################################################
     if(!(Test-Path -LiteralPath "$dir\Resources\Settings.csv"))
     {
         $script:settings['DEFAULT_OUTPUT_DIR'] = $dir
@@ -1109,9 +1115,33 @@ function initial_checks
         $script:settings["DEFAULT_MIN_HEIGHT"] = 0
         $script:settings["DEFAULT_MIN_WIDTH"] = 0
         $script:settings["SLEEP_TIMER"] = 60;
-
+        $script:settings["CLOCK_SPEED"] = 100
+        $script:settings["FFMPEG"] = "";
+        $script:settings["FFPROBE"] = "";
         update_settings
     }
+
+
+    ###################################################################################
+    ###Load Settings ##################################################################
+    load_settings
+
+
+
+    ###################################################################################
+    ###Clock Speed ####################################################################
+    if(!($script:settings['CLOCK_SPEED'] -match "\d+"))
+    {
+        $script:settings['CLOCK_SPEED'] = 100;
+    }
+
+    ###################################################################################
+    ###################################################################################
+    if(($script:settings["FFMPEG"] -eq $null) -or (!(Test-Path -LiteralPath $script:settings["FFMPEG"])) -or ($script:settings["FFPROBE"] -eq $null) -or (!(Test-Path -LiteralPath $script:settings["FFPROBE"])))
+    {
+        ffmpeg_settings
+    }
+
     ###################################################################################
     if(!(Test-Path -LiteralPath "$dir\Resources\Reddits.csv"))
     {
@@ -1132,10 +1162,10 @@ function initial_checks
         {
             [Array]$line_split = csv_line_to_array $line
             $reddit = $line_split[0]
-            if(!($site_list.Contains($reddit)))
+            if(!($script:site_list.Contains($reddit)))
             {
                 $line = $line -replace "^$reddit,",""
-                $site_list.Add($reddit,"$line");
+                $script:site_list.Add($reddit,"$line");
             }
         }
             
@@ -1151,6 +1181,10 @@ function initial_checks
     {
         New-Item "$dir\Resources\Duplicates.csv" -ItemType File
     }
+
+    $Script:Timer.Interval = $script:settings['CLOCK_SPEED'];
+    $Script:Timer.Start()
+    $Script:Timer.Add_Tick({Idle_Timer})
 }
 ################################################################################
 ######Load Settings##############################################################
@@ -1174,6 +1208,229 @@ function load_settings
         }
         $reader.close(); 
     }
+}
+#################################################################################
+######Save Settings##############################################################
+function ffmpeg_settings
+{
+    ##################################################################################
+    ###########Main Form
+    $script:Form = New-Object System.Windows.Forms.Form
+    $script:Form.Location = "200, 200"
+    $script:Form.Font = "Copperplate Gothic,8.1"
+    $script:Form.FormBorderStyle = "FixedDialog"
+    $script:Form.ForeColor = "Black"
+    $script:Form.BackColor = "#434343"
+    $script:Form.Text = "  FFmpeg & FFprobe Required"
+    $script:Form.Width = 1000
+    $script:Form.Height = 300
+
+
+    ##################################################################################
+    ###########Title Main
+    $y_pos = 15
+    $title1            = New-Object System.Windows.Forms.Label   
+    $title1.Font       = New-Object System.Drawing.Font("Copperplate Gothic Bold",15,[System.Drawing.FontStyle]::Regular)
+    $title1.Text       = "FFmpeg && FFprobe Required"
+    $title1.TextAlign  = "MiddleCenter"
+    $title1.Width      = $script:Form.Width
+    $title1.height     = 35
+    $title1.ForeColor  = "white"
+    $title1.Location   = New-Object System.Drawing.Size((($script:Form.width / 2) - ($script:Form.width / 2)),$y_pos)
+    $script:Form.Controls.Add($title1)
+
+
+    ##################################################################################
+    ###########ffmpeg Location Label
+    $y_pos = $y_pos + 85
+    $ffmpeg_location_label1 = New-Object System.Windows.Forms.Label 
+    $ffmpeg_location_label1.Location = New-Object System.Drawing.Point(15,($y_pos))
+    $ffmpeg_location_label1.Size = "250, 23"
+    $ffmpeg_location_label1.anchor = "Top"
+    $ffmpeg_location_label1.ForeColor = "White"
+    $ffmpeg_location_label1.Text = "FFmpeg Location:   "
+    $ffmpeg_location_label1.TextAlign  = "MiddleRight"
+    $ffmpeg_location_label1.Font = [Drawing.Font]::New("Times New Roman", 12)
+    $script:Form.Controls.Add($ffmpeg_location_label1)
+
+    ##################################################################################
+    ###########Scan Directory Input
+    $ffmpeg_box1 = New-Object System.Windows.Forms.TextBox
+    $ffmpeg_box2 = New-Object System.Windows.Forms.TextBox
+    $ffmpeg_box1.Location = New-Object System.Drawing.Point(($ffmpeg_location_label1.location.x + $ffmpeg_location_label1.width + 3),($y_pos))
+    $ffmpeg_box1.anchor = "Top"
+    $ffmpeg_box1.width = 500
+    $ffmpeg_box1.Height = 40
+    $ffmpeg_box1.font = New-Object System.Drawing.Font("Arial",11,[System.Drawing.FontStyle]::Regular)
+    if(($script:settings['FFMPEG'] -eq "") -or ($script:settings['FFMPEG'] -eq $null) -or (!(Test-Path -literalpath $script:settings['FFMPEG'])))
+    {
+        $ffmpeg_box1.text = "Browse or Enter a file path for FFmpeg.exe"
+    }
+    else
+    {
+        $ffmpeg_box1.text = $script:settings['FFMPEG']
+        $ffmpeg_location_label1.ForeColor = "Green"
+    }
+    $ffmpeg_box1.Add_Click({
+        if($ffmpeg_box1.Text -eq "Browse or Enter a file path for FFmpeg.exe")
+        {
+            $ffmpeg_box1.Text = ""
+            $ffmpeg_box2.Text = ""
+        }
+    })
+    $ffmpeg_box1.Add_TextChanged({
+        
+            if(($this.text -ne $Null) -and ($this.text -ne "") -and (Test-Path -literalpath $this.text) -and ($this.text -match ".exe$"))
+            {
+                $script:settings['FFMPEG'] = $ffmpeg_box1.Text
+                $ffmpeg_box2.Text = $script:settings['FFMPEG']
+                $ffmpeg_location_label1.ForeColor = "Green"
+                update_settings
+            }
+            else
+            {
+                $script:settings['FFMPEG'] = "";
+                $ffmpeg_location_label1.ForeColor = "White"
+                update_settings
+            }
+    })
+    $ffmpeg_box1.Add_lostFocus({
+
+        if(($script:settings['FFMPEG'] -eq "") -or ($script:settings['FFMPEG'] -eq $null) -or (!(Test-Path -literalpath $script:settings['FFMPEG'])))
+        {
+            $this.text = "Browse or Enter a file path for FFmpeg.exe"
+            $ffmpeg_box2.Text = "Browse or Enter a file path for FFmpeg.exe"
+        }
+    })
+    $script:Form.Controls.Add($ffmpeg_box1)
+    
+    ##################################################################################
+    ###########Browse Button 1
+    $browse_button1 = New-Object System.Windows.Forms.Button
+    $browse_button1.Location= New-Object System.Drawing.Size(($ffmpeg_box1.location.x + $ffmpeg_box1.width + 3),($y_pos + 1))
+    $browse_button1.BackColor = "#606060"
+    $browse_button1.ForeColor = "White"
+    $browse_button1.anchor = "Top"
+    $browse_button1.Width=100
+    $browse_button1.Height=22
+    $browse_button1.Text='Browse'
+    $browse_button1.Font = [Drawing.Font]::New("Times New Roman", 9)
+    $browse_button1.Add_Click(
+    {    
+        $return = prompt_for_file_exe
+        if($return.length -ge 3)
+        {
+            $ffmpeg_box1.text = $return
+        }
+    })
+    $script:Form.Controls.Add($browse_button1)
+
+
+    ##################################################################################
+    ###########ffprobe Location Label
+    $y_pos = $y_pos + 85
+    $ffprobe_location_label1 = New-Object System.Windows.Forms.Label 
+    $ffprobe_location_label1.Location = New-Object System.Drawing.Point(15,($y_pos))
+    $ffprobe_location_label1.Size = "250, 23"
+    $ffprobe_location_label1.anchor = "Top"
+    $ffprobe_location_label1.ForeColor = "White"
+    $ffprobe_location_label1.Text = "FFprobe Location:   "
+    $ffprobe_location_label1.TextAlign  = "MiddleRight"
+    $ffprobe_location_label1.Font = [Drawing.Font]::New("Times New Roman", 12)
+    $script:Form.Controls.Add($ffprobe_location_label1)
+
+    ##################################################################################
+    ###########Scan Directory Input
+    $ffprobe_box1 = New-Object System.Windows.Forms.TextBox
+    $ffprobe_box2 = New-Object System.Windows.Forms.TextBox
+    $ffprobe_box1.Location = New-Object System.Drawing.Point(($ffprobe_location_label1.location.x + $ffprobe_location_label1.width + 3),($y_pos))
+    $ffprobe_box1.anchor = "Top"
+    $ffprobe_box1.width = 500
+    $ffprobe_box1.Height = 40
+    $ffprobe_box1.font = New-Object System.Drawing.Font("Arial",11,[System.Drawing.FontStyle]::Regular)
+    if(($script:settings['FFPROBE'] -eq "") -or ($script:settings['FFPROBE'] -eq $null) -or (!(Test-Path -literalpath $script:settings['FFPROBE'])))
+    {
+        $ffprobe_box1.text = "Browse or Enter a file path for FFprobe.exe"
+    }
+    else
+    {
+        $ffprobe_box1.text = $script:settings['FFPROBE']
+        $ffprobe_location_label1.ForeColor = "Green"
+    }
+    $ffprobe_box1.Add_Click({
+        if($ffprobe_box1.Text -eq "Browse or Enter a file path for FFprobe.exe")
+        {
+            $ffprobe_box1.Text = ""
+            $ffprobe_box2.Text = ""
+        }
+    })
+    $ffprobe_box1.Add_TextChanged({
+        
+            if(($this.text -ne $Null) -and ($this.text -ne "") -and (Test-Path -literalpath $this.text) -and ($this.text -match ".exe$"))
+            {
+                $script:settings['FFPROBE'] = $ffprobe_box1.Text
+                $ffprobe_box2.Text = $script:settings['FFPROBE']
+                $ffprobe_location_label1.ForeColor = "Green"
+                update_settings
+                if((Test-Path -LiteralPath $script:settings['FFPROBE']) -and (Test-Path -LiteralPath $script:settings['FFMPEG']))
+                {
+                    $script:Form.Close();
+                }
+            }
+            else
+            {
+                $script:settings['FFPROBE'] = "";
+                $ffprobe_location_label1.ForeColor = "White"
+                update_settings
+                if((Test-Path -LiteralPath $script:settings['FFPROBE']) -and (Test-Path -LiteralPath $script:settings['FFMPEG']))
+                {
+                    $script:Form.Close();
+                }
+            }
+    })
+    $ffprobe_box1.Add_lostFocus({
+
+        if(($script:settings['FFPROBE'] -eq "") -or ($script:settings['FFPROBE'] -eq $null) -or (!(Test-Path -literalpath $script:settings['FFPROBE'])))
+        {
+            $this.text = "Browse or Enter a file path for FFprobe.exe"
+            $ffprobe_box2.Text = "Browse or Enter a file path for FFprobe.exe"
+        }
+    })
+    $script:Form.Controls.Add($ffprobe_box1)
+    
+    ##################################################################################
+    ###########Browse Button 1
+    $browse_button2 = New-Object System.Windows.Forms.Button
+    $browse_button2.Location= New-Object System.Drawing.Size(($ffprobe_box1.location.x + $ffprobe_box1.width + 3),($y_pos + 1))
+    $browse_button2.BackColor = "#606060"
+    $browse_button2.ForeColor = "White"
+    $browse_button2.anchor = "Top"
+    $browse_button2.Width=100
+    $browse_button2.Height=22
+    $browse_button2.Text='Browse'
+    $browse_button2.Font = [Drawing.Font]::New("Times New Roman", 9)
+    $browse_button2.Add_Click(
+    {    
+        $return = prompt_for_file_exe
+        if($return.length -ge 3)
+        {
+            $ffprobe_box1.text = $return
+        }
+    })
+    $script:Form.Controls.Add($browse_button2)
+    Start-Process "https://ffmpeg.org/download.html#build-windows"
+    [void] $script:Form.ShowDialog()
+}
+##################################################################################
+######Prompt for File Exe#########################################################
+function prompt_for_file_exe()
+{  
+    [System.Reflection.Assembly]::LoadWithPartialName("System.windows.forms")|Out-Null
+    $OpenFileDialog = New-Object System.Windows.Forms.OpenFileDialog
+    $OpenFileDialog.initialDirectory = "::{20D04FE0-3AEA-1069-A2D8-08002B30309D}"
+    $OpenFileDialog.filter = "(*.exe)|*.exe;"
+    $OpenFileDialog.ShowDialog() | Out-Null
+    $OpenFileDialog.filename
 }
 #################################################################################
 ######Save Settings##############################################################
@@ -1201,7 +1458,7 @@ function update_reddits
     ###########Update Reddit File
     $writer = new-object system.IO.StreamWriter("$dir\Resources\Reddits_Temp.csv",$true)
     $writer.write("SUBREDDIT,ENABLED,TARGET DIRECTORY,MINIMUM HEIGHT,MINIMUM WIDTH,IMAGES?,VIDEOS?`r`n");
-    foreach($reddit in $site_list.getEnumerator() | sort key)
+    foreach($reddit in $script:site_list.getEnumerator() | sort key)
     {
         $site = $reddit.key
         $entry_array = $reddit.value
@@ -1218,45 +1475,45 @@ function update_reddits
     }
     ##################################################################################
     ###########Update List Box
-    $place_holder = $reddit_list_box.SelectedItem
-    $reddit_list_box.Items.Clear();
+    $place_holder = $script:reddit_list_box.SelectedItem
+    $script:reddit_list_box.Items.Clear();
 
-    [void] $reddit_list_box.Items.add("Select All")
-    $reddit_list_box.SetItemChecked($reddit_list_box.Items.IndexOf("Select All"), $true);
+    [void] $script:reddit_list_box.Items.add("Select All")
+    $script:reddit_list_box.SetItemChecked($script:reddit_list_box.Items.IndexOf("Select All"), $true);
     $script:list_box_select_status = 1;
-    if($site_list.count -ne 0)
+    if($script:site_list.count -ne 0)
     {
-        foreach($reddit in $site_list.getEnumerator() | sort key)
+        foreach($reddit in $script:site_list.getEnumerator() | sort key)
         {
             $site = $reddit.key
             $entry_array = csv_line_to_array $reddit.value
-            [void] $reddit_list_box.Items.add("$site")
+            [void] $script:reddit_list_box.Items.add("$site")
             if($entry_array[0] -eq "True")
             {
-                if($site_list.contains("$site")) #Check the items that the user had checked last
+                if($script:site_list.contains("$site")) #Check the items that the user had checked last
                 {
-                    $reddit_list_box.SetItemChecked($reddit_list_box.Items.IndexOf("$site"), $true);
+                    $script:reddit_list_box.SetItemChecked($script:reddit_list_box.Items.IndexOf("$site"), $true);
                     ##Update Select Item
                         if($script:list_box_select_status -eq 1)
                         {
-                            $reddit_list_box.SetItemChecked($reddit_list_box.Items.IndexOf("Select All"),$true);
-                            $reddit_list_box.items[$reddit_list_box.Items.IndexOf("Select All")] = "Select None"
+                            $script:reddit_list_box.SetItemChecked($script:reddit_list_box.Items.IndexOf("Select All"),$true);
+                            $script:reddit_list_box.items[$script:reddit_list_box.Items.IndexOf("Select All")] = "Select None"
                             $script:list_box_select_status = 0;
                         }
                 }
                 else
                 {
-                    if($site_list.contains("$site")) #Check the items that the user had checked last
+                    if($script:site_list.contains("$site")) #Check the items that the user had checked last
                     {
-                        $reddit_list_box.SetItemChecked($reddit_list_box.Items.IndexOf("$site"), $false);
+                        $script:reddit_list_box.SetItemChecked($script:reddit_list_box.Items.IndexOf("$site"), $false);
                         
                     }
                 } 
             }  
         }
-        if($reddit_list_box.Items.Contains("$place_holder"))
+        if($script:reddit_list_box.Items.Contains("$place_holder"))
         {
-            $reddit_list_box.SetSelected($reddit_list_box.Items.IndexOf("$place_holder"),$true);
+            $script:reddit_list_box.SetSelected($script:reddit_list_box.Items.IndexOf("$place_holder"),$true);
         }
     }
 }
@@ -1296,462 +1553,632 @@ function csv_write_line ($write_line,$data)
 ######Cycler######################################################################
 function cycler
 {
-    $cycler_job_block = {
+$cycler_job_block = {
+##################################################################################
+######Cycler Global Vars (JOB) ###################################################
+Add-Type -AssemblyName 'System.Windows.Forms'
+Add-Type -AssemblyName 'System.Drawing'
+Add-Type -AssemblyName 'PresentationFramework'
+$script:site_list = $using:site_list;
+$script:dir = $using:dir;
+$settings = $using:settings;
+
+$script:ffmpeg = $script:settings["FFMPEG"]
+$script:ffprobe = $script:settings["FFPROBE"]
+
+$script:duplicates = new-object System.Collections.Hashtable
+$script:file_hashes = new-object System.Collections.Hashtable
+
+##################################################################################
+######Job Main Function (JOB)#####################################################
+function job_main
+{
+
     ##################################################################################
-    ######Cycler Global Vars##########################################################
-        Add-type -AssemblyName System.Drawing
-        $script:site_list = $using:site_list;
-        $script:dir = $using:dir;
-        $settings = $using:settings;
-        $script:ffmpeg = $using:ffmpeg
-        
-
-        $duplicates = new-object System.Collections.Hashtable
-        $file_hashes = new-object System.Collections.Hashtable
-
+    ######Ingest Hash File############################################################
+    write-output "--------------------------------------------------------------------------------------------------------------------------"
+    Write-Output "Initializing"
+    Write-Output "     Ingesting Media Hashes"
+    if(!(Test-Path -LiteralPath "$dir\Resources\Hashes.csv"))
+    {
+        New-Item "$dir\Resources\Hashes.csv" -ItemType File
+    }
+    else
+    {
         ##################################################################################
-        ######Ingest Hash File############################################################
-        write-output "--------------------------------------------------------------------------------------------------------------------------"
-        Write-Output "Initializing"
-        Write-Output "     Ingesting Media Hashes"
-        if(!(Test-Path -LiteralPath "$dir\Resources\Hashes.csv"))
+        ######Load Hashes ################################################################
+        $reader = New-Object IO.StreamReader "$dir\Resources\Hashes.csv"
+        $counter = 0;
+        while($null -ne ($line = $reader.ReadLine()))
         {
-            New-Item "$dir\Resources\Hashes.csv" -ItemType File
-        }
-        else
-        {
-            #Hash Value
-            #Full_File_Path
-            $reader = New-Object IO.StreamReader "$dir\Resources\Hashes.csv"
-            $counter = 0;
-            while($null -ne ($line = $reader.ReadLine()))
+            ($hash,$file) = $line -split ',', 2
+            $file = $file -replace "^`"|`"$",""
+            if(!($script:file_hashes.Contains($hash)))
             {
-                Select-String '(?:^|,)(?=[^"]|(")?)"?((?(1)[^"]*|[^,"]*))"?(?=,|$)' -input $line -AllMatches | Foreach { [System.Collections.ArrayList]$line_split = $_.matches -replace '^,|"',''}
-                if(!($file_hashes.Contains($line_split[0])))
-                {
-                    if(Test-Path -LiteralPath $line_split[1])
-                    {
-                        $counter++;
-                        $file_hashes.Add($line_split[0],$line_split[1]);
-                    }
-                }
-            }
-            $reader.Close()
-        }
-        Write-Output "     $counter Media Hashes Ingested"
-        ##################################################################################
-        ######Ingest Dupicates############################################################
-        $duplicates = @{};
-        Write-Output "     Ingesting Duplicates"
-        if(!(Test-Path -LiteralPath "$dir\Resources\Duplicates.csv"))
-        {
-            New-Item -LiteralPath "$dir\Resources\Duplicates.csv" -ItemType File
-        }
-        else
-        {
-            $counter = 0;
-            $reader = New-Object IO.StreamReader "$dir\Resources\Duplicates.csv"
-            while($null -ne ($line = $reader.ReadLine()))
-            {
-                if(!($duplicates.Contains($line)))
+                if(Test-Path -LiteralPath $file)
                 {
                     $counter++;
-                    $duplicates.Add($line,"");
-                    #write-host $line
+                    $script:file_hashes.Add($hash,$file);
                 }
             }
-            $reader.Close()
         }
-        Write-Output "     $counter Duplicates Ingested"
-        $site_total = 0;
-        ##################################################################################
-        ######Calculate On Subreddits#####################################################
-        foreach($site in $script:site_list.getEnumerator() | Sort Key)
+        $reader.Close()
+    }
+    Write-Output "     $counter Media Hashes Ingested"
+    ##################################################################################
+    ######Ingest Dupicates############################################################
+    $script:duplicates = @{};
+    Write-Output "     Ingesting Duplicates"
+    if(!(Test-Path -LiteralPath "$dir\Resources\Duplicates.csv"))
+    {
+        New-Item -LiteralPath "$dir\Resources\Duplicates.csv" -ItemType File
+    }
+    else
+    {
+        $counter = 0;
+        $reader = New-Object IO.StreamReader "$dir\Resources\Duplicates.csv"
+        while($null -ne ($line = $reader.ReadLine()))
         {
-            if($site.value -match "^True")
+            if(!($script:duplicates.Contains($line)))
             {
-                $site_total++;
+                $counter++;
+                $script:duplicates.Add($line,"");
+                #write-host $line
             }
         }
-        ##################################################################################
-        ######Cycler######################################################################
-        $cycle = 0;
-        while($true)
+        $reader.Close()
+    }
+    Write-Output "     $counter Duplicates Ingested"
+    $site_total = 0;
+    ##################################################################################
+    ######Calculate On Subreddits#####################################################
+    foreach($site in $script:site_list.getEnumerator() | Sort Key)
+    {
+        if($site.value -match "^True")
         {
-            $cycle++;
-            $site_count = 0 
-            foreach($site in $script:site_list.getEnumerator() | Sort Key)
-            {
-                ##################################################################################
-                ######Reddit Site Vars############################################################
-                Select-String '(?:^|,)(?=[^"]|(")?)"?((?(1)[^"]*|[^,"]*))"?(?=,|$)' -input $site.value -AllMatches | Foreach { [System.Collections.ArrayList]$key_split = $_.matches -replace '^,|"',''}
-                $full_url = "https://www.reddit.com/" + $site.key + ".json"
-                $enabled    = $key_split[0];
-                $output_dir = $key_split[1];
-                $min_height = $key_split[2];
-                $min_width  = $key_split[3];
-                $images_on  = $key_split[4];
-                $videos_on  = $key_split[5];
-                $sub_dir    = $site.key -replace "r/|u/","";
-                $reddit_sub = $site.key
+            $site_total++;
+        }
+    }
+    ##################################################################################
+    ######Cycler######################################################################
+    $cycle = 0;
+    while($true)
+    {
+        $cycle++;
+        $site_count = 0 
+        foreach($site in $script:site_list.getEnumerator() | Sort Key)
+        {
+            ##################################################################################
+            ######Reddit Site Vars############################################################
+            Select-String '(?:^|,)(?=[^"]|(")?)"?((?(1)[^"]*|[^,"]*))"?(?=,|$)' -input $site.value -AllMatches | Foreach { [System.Collections.ArrayList]$key_split = $_.matches -replace '^,|"',''}
+            $full_url = "https://www.reddit.com/" + $site.key + ".json"
+            $enabled    = $key_split[0];
+            $output_dir = $key_split[1];
+            $min_height = $key_split[2];
+            $min_width  = $key_split[3];
+            $images_on  = $key_split[4];
+            $videos_on  = $key_split[5];
+            $sub_dir    = $site.key -replace "r/|u/","";
+            $reddit_sub = $site.key
 
+            ##################################################################################
+            ######Enabled#####################################################################
+            if($enabled -eq "True")
+            { 
+                $site_count++;
+                write-output "-------------------------------------------------------------"
+                write-Output "Processing $reddit_sub"
+                write-output "PL-Processing $reddit_sub"
                 ##################################################################################
-                ######Enabled#####################################################################
-                if($enabled -eq "True")
-                { 
-                    $site_count++;
-                    write-output "-------------------------------------------------------------"
-                    write-Output "Processing $reddit_sub"
-                    write-output "PL-Processing $reddit_sub"
-                    ##################################################################################
-                    ######Validate Directory##########################################################
-                    if(!(Test-Path -LiteralPath "$output_dir\$sub_dir"))
+                ######Validate Directory##########################################################
+                if(!(Test-Path -LiteralPath "$output_dir\$sub_dir"))
+                {
+                    New-Item -ItemType directory -Path "$output_dir\$sub_dir"
+                }
+                ##################################################################################
+                ######Update Hash File############################################################
+                $writer = new-object system.IO.StreamWriter("$dir\Resources\Hashes.csv",$true)
+                Get-ChildItem -LiteralPath "$output_dir\$sub_dir" -Recurse -File -ErrorAction SilentlyContinue | where {! $_.PSIsContainer} | sort Name | ForEach-Object {
+                    $fullpath = $_.FullName
+                    if(!($script:file_hashes.Containsvalue($fullpath)))
                     {
-                        New-Item -ItemType directory -Path "$output_dir\$sub_dir"
-                    }
-                    ##################################################################################
-                    ######Update Hash File############################################################
-                    $writer = new-object system.IO.StreamWriter("$dir\Resources\Hashes.csv",$true)
-                    Get-ChildItem -LiteralPath "$output_dir\$sub_dir" -Recurse -File -ErrorAction SilentlyContinue | where {! $_.PSIsContainer} | sort Name | ForEach-Object {
-                        $fullpath = $_.FullName
-                        if(!($file_hashes.Containsvalue($fullpath)))
+                        $hash = Get-FileHash $fullpath -Algorithm MD5
+                        $hash = $hash.hash
+                        if(!($script:file_hashes.Contains($hash)) -and (Test-Path -literalpath $fullpath))
                         {
-                            $hash = Get-FileHash $fullpath
-                            $hash = $hash.hash
-                            if(!($file_hashes.Contains($hash)) -and (Test-Path -literalpath $fullpath))
+                            $script:file_hashes.Add($hash,$fullpath);
+                            $writer.write("$hash,$fullpath`r`n");  
+                        }
+                        else
+                        {
+                            #$other_path = $script:file_hashes[$hash]
+                            #Write-Output "Dup Maybe1 $fullpath"
+                            #write-output "Dup Maybe2 $other_path"
+                            #write-output "  "
+                            if((Test-path -LiteralPath $script:file_hashes[$hash]) -and (!($script:file_hashes[$hash] -match [regex]::Escape($fullpath))))
                             {
-                                $file_hashes.Add($hash,$fullpath);
-                                $writer.write("$hash,$fullpath`r`n");  
+                                write-output "     Duplicate File Removed: $fullpath"
+                                Remove-Item -literalpath $fullpath -force
                             }
                             else
                             {
-                                #$other_path = $file_hashes[$hash]
-                                #Write-Output "Dup Maybe1 $fullpath"
-                                #write-output "Dup Maybe2 $other_path"
-                                #write-output "  "
-                                if((Test-path -LiteralPath $file_hashes[$hash]) -and (!($file_hashes[$hash] -match [regex]::Escape($fullpath))))
-                                {
-                                    write-output "     Duplicate File Removed: $fullpath"
-                                    Remove-Item -literalpath $fullpath -force
-                                }
-                                else
-                                {
-                                    $file_hashes[$hash] = $fullpath
-                                }
+                                $script:file_hashes[$hash] = $fullpath
                             }
-                        }            
-                    }
-                    $writer.close();
+                        }
+                    }            
+                }
+                $writer.close();
+                ##################################################################################
+                ######Start Request###############################################################
+                #write-output $full_url
+                $response = "";
+                try
+                {
+                    $json_buffer = "$dir\Resources\Cache\Json Buffer.txt"
+                    if(Test-Path -LiteralPath $json_buffer){Remove-Item -LiteralPath $json_buffer}
+                    Start-BitsTransfer -Source $full_url -Destination $json_buffer -TransferType Download
+                    $response = Get-Content -LiteralPath $json_buffer
+                }
+                catch
+                {
+                    Write-Output "     Failed Get - Error 1: $full_url"
+                    write-output "PL-Failed: $full_url"
+                    $failed_buffer = "$dir\Resources\Cache\Failed - $reddit_sub.txt" -replace "r/|u/",""
+                    Set-Content -LiteralPath $failed_buffer $response
+                }
+                if($response.length -lt 200)
+                {
+                    Write-Output "     Failed Get - Error 2: $full_url"
+                    write-output "PL-Failed: $full_url"
+                    $failed_buffer = "$dir\Resources\Cache\Failed - $reddit_sub.txt" -replace "r/|u/",""
+                    Set-Content -LiteralPath $failed_buffer $response 
+                }
+                ##################################################################################
+                ######Good Request################################################################
+                $counter = 0;
+                $counter_found = 0;
+                if($response.length -gt 200)
+                {
+                    #Write-Output "     Response Valid"
                     ##################################################################################
-                    ######Start Request###############################################################
-                    #write-output $full_url
-                    $response = "";
-                    try
+                    ######Matching####################################################################
+                    $pattern = '(http[s]?)(:\/\/)([^\s,]+)(?=")'
+                    $matches = [regex]::Matches($response, $pattern)
+        
+                    Foreach($media_url in ($matches | Select-Object -Unique) | sort value -Descending)
                     {
-                        
-                        $response = Invoke-WebRequest -Uri $full_url -UseBasicParsing
-                    }
-                    catch
-                    {
-                        Write-Output "Failed Get: $full_url"
-                        write-output "PL-Failed: $full_url"
-                    }
-                    if($response.length -ge 200)
-                    {
-                        Write-Output "Failed Length: $full_url"
-                        write-output "PL-Failed: $full_url"
-                    }
-                    ##################################################################################
-                    ######Good Request################################################################
-                    if($response.length -lt 200)
-                    {
+                        #write-output "Media URL: $media_url"
+                        #Problems with Audio? Check DASHPLAYLIST.mpd file for Reddit API changes
+                        $virgin_media_url = $media_url
                         ##################################################################################
-                        ######Matching####################################################################
-                        $pattern = '(http[s]?)(:\/\/)([^\s,]+)(?=")'
-                        $matches = [regex]::Matches($response, $pattern)
-              
-                        $counter = 0;
-                        $counter_found = 0;
-                        Foreach($media_url in ($matches | Select-Object -Unique) | sort value -Descending)
+                        ######Pre-Duplicate Check#########################################################
+                        if(!($script:duplicates.Contains($media_url.value)) -and (!($media_url -match "icon|thumb|award|_96|/comments/"))) #scrub
                         {
-                            #write-output "Media URL: $media_url"
-                            #Problems with Audio? Check DASHPLAYLIST.mpd file for Reddit API changes
-                            $virgin_media_url = $media_url
+                            $counter++
+                            $media_url = $media_url -replace '\?source=fallback',""
                             ##################################################################################
-                            ######Pre-Duplicate Check#########################################################
-                            if(!($duplicates.Contains($media_url.value)) -and (!($media_url -match "icon|thumb|award|_96|/comments/"))) #scrub
+                            ######Most Media Check############################################################
+                            if((($media_url -match "jpg$|jpeg$|bmp$|gif$|png$|webp$|gifv$") -and ($images_on -eq "True")) -or (($media_url -match "mp4$") -and ($videos_on -eq "True")))
                             {
-                                $media_url = $media_url -replace '\?source=fallback',""
-                                ##################################################################################
-                                ######Most Media Check############################################################
-                                if((($media_url -match "jpg$|jpeg$|bmp$|gif$|png$|webp$|gifv$") -and ($images_on -eq "True")) -or (($media_url -match "mp4$") -and ($videos_on -eq "True")))
+                                
+                                $media_url = $media_url -replace "gifv$","mp4"
+                                $save_name = $media_url
+                                $save_name = $save_name -replace "/DASH",""
+                                $save_name_gui = Split-Path $save_name -Leaf
+                                $save_name = "$output_dir\$sub_dir\$save_name_gui"
+                                write-output "    "
+                                write-output "$save_name"
+                                write-output "$media_url"
+                                if(!(Test-Path -LiteralPath "$save_name"))
                                 {
-                                    $counter++
-                                    $media_url = $media_url -replace "gifv$","mp4"
-                                    $save_name = $media_url
-                                    $save_name = $save_name -replace "/DASH",""
-                                    $save_name = Split-Path $save_name -Leaf
-
-                                    if(!(Test-Path -LiteralPath "$output_dir\$sub_dir\$save_name"))
+                                    $counter_found++;
+                                    write-output "     $counter_found = $media_url"
+                                    write-output "PL-$reddit_sub $counter_found = $save_name_gui"
+                                    ##################################################################################
+                                    ######Download Dash Video#########################################################
+                                    if(($media_url -match ".mp4") -and ($media_url -match "DASH"))
                                     {
-                                        $counter_found++;
-                                        write-output "     $counter_found = $media_url"
-                                        write-output "PL-$reddit_sub $counter_found = $save_name"
-                                        ##################################################################################
-                                        ######Download Image##############################################################
-                                        #try
-                                        #{
-                                            if(($media_url -match ".mp4") -and ($media_url -match "DASH"))
-                                            {
-                                                ######Clear Cache
-                                                if(Test-Path -LiteralPath "$dir\Resources\Cache\video.mp4")
-                                                {
-                                                    Remove-Item -LiteralPath "$dir\Resources\Cache\video.mp4"
-                                                }
+                                        ######Clear Cache
+                                        if(Test-Path -LiteralPath "$dir\Resources\Cache\video.mp4")
+                                        {
+                                            Remove-Item -LiteralPath "$dir\Resources\Cache\video.mp4"
+                                        }
 
-                                                #####Download Video
-                                                write-output "               Downloading: $media_url"
-                                                Start-BitsTransfer -Source $media_url -Destination "$dir\Resources\Cache\video.mp4" -TransferType Download
+                                        #####Download Video
+                                        write-output "               Downloading: $media_url"
+                                        Start-BitsTransfer -Source $media_url -Destination "$dir\Resources\Cache\video.mp4" -TransferType Download
                               
 
-                                                $audio_checks = ("_AUDIO_128","_AUDIO_64","_AUDIO");
-                                                foreach($check in $audio_checks)
-                                                {
-                                                    if(Test-Path -LiteralPath "$dir\Resources\Cache\audio.mp4")
-                                                    {
-                                                        Remove-Item -LiteralPath "$dir\Resources\Cache\audio.mp4"
-                                                    }
-                                                    $audio_url = $media_url
-                                                    $audio_url = $audio_url -replace "_240|_270|_360|_480|_720|_1080", "$check"
-                                                    write-output "               Checking Audio: $audio_url"
-                                                    Start-BitsTransfer -Source $audio_url -Destination "$dir\Resources\Cache\audio.mp4" -TransferType Download
-                                                    if(Test-Path -LiteralPath "$dir\Resources\Cache\audio.mp4")
-                                                    {
-                                                        try
-                                                        {
-                                                            $console = & cmd /u /c  "$script:ffmpeg -i `"$dir\Resources\Cache\video.mp4`" -i `"$dir\Resources\Cache\audio.mp4`" -hide_banner -loglevel error -c copy `"$output_dir\$sub_dir\$save_name`" -y"
-                                                        }
-                                                        catch
-                                                        {
-                                                            write-output $console
-                                                            write-output "Failed Audio"
-                                                        }
-                                                        break;
-                                                    }
-                                                    else
-                                                    {
-                                                        #No Audio File
-                                                        write-output "               No Audio $save_name"
-                                                        Move-Item -LiteralPath "$dir\Resources\Cache\video.mp4" "$output_dir\$sub_dir\$save_name"
-                                                    }
-
-                                                }
-                                                
-                                                
+                                        $audio_checks = ("_AUDIO_128","_AUDIO_64","_AUDIO");
+                                        foreach($check in $audio_checks)
+                                        {
+                                            if(Test-Path -LiteralPath "$dir\Resources\Cache\audio.mp4")
+                                            {
+                                                Remove-Item -LiteralPath "$dir\Resources\Cache\audio.mp4"
                                             }
-                                            ##############################
-                                            ######Not a "DASH" File
-                                            else 
+                                            $audio_url = $media_url
+                                            $audio_url = $audio_url -replace "_240|_270|_360|_480|_720|_1080", "$check"
+                                            write-output "               Checking Audio: $audio_url"
+                                            Start-BitsTransfer -Source $audio_url -Destination "$dir\Resources\Cache\audio.mp4" -TransferType Download
+                                            if(Test-Path -LiteralPath "$dir\Resources\Cache\audio.mp4")
                                             {
-                                                Start-BitsTransfer -Source $media_url -Destination "$output_dir\$sub_dir\$save_name" -TransferType Download
-                                            }
-
-                                            
-                                            $duplicates.Add("$virgin_media_url","")
-                                            Add-Content "$dir\Resources\Duplicates.csv" "$virgin_media_url"
-
-
-
-                                            ##################################################################################
-                                            ######Check Dimensions############################################################
-                                            if(!($save_name -match "mp4$"))
-                                            {
-                                                $image = New-Object System.Drawing.Bitmap "$output_dir\$sub_dir\$save_name"
-                                                $height = $image.Height
-                                                $width = $image.Width
-                                                $image.dispose();
-                                                if($height -lt $min_height)
+                                                try
                                                 {
-                                                    write-output "          Height too Small $height < $min_height...Deleted"
-                                                    if(Test-path -LiteralPath "$output_dir\$sub_dir\$save_name")
-                                                    {
-                                                        Remove-Item -LiteralPath "$output_dir\$sub_dir\$save_name" -force
-                                                    }
-                                                    write-output "PL-$save_name Height too Small $height < $min_height...Deleted"
+                                                    $console = & cmd /u /c  "$script:ffmpeg -i `"$dir\Resources\Cache\video.mp4`" -i `"$dir\Resources\Cache\audio.mp4`" -hide_banner -loglevel error -c copy `"$save_name`" -y"
                                                 }
-                                                elseif($width -lt $min_width)
+                                                catch
                                                 {
-                                                    write-output "          Width too Small $width < $min_width...Deleted"   
-                                                    if(Test-path -LiteralPath "$output_dir\$sub_dir\$save_name")
-                                                    {
-                                                        Remove-Item -LiteralPath "$output_dir\$sub_dir\$save_name" -force
-                                                    }
-                                                    write-output "PL-Width too Small $width < $min_width...Deleted"
+                                                    write-output $console
+                                                    write-output "Failed Audio"
                                                 }
-                                            }#Image Size Checks
-                                            ##################################################################################
-                                            ######Post-Duplicate Hash Check###################################################
-                                            $hash = Get-FileHash "$output_dir\$sub_dir\$save_name"
-                                            $hash = $hash.hash
-                                            if(!($file_hashes.contains($hash)))
-                                            {
-                                                $file_hashes.Add($hash,"$output_dir\$sub_dir\$save_name")
+                                                break;
                                             }
                                             else
                                             {
-                                                $dup = $file_hashes[$hash]
-                                                write-output "          Duplicate Files:"
-                                                write-output "               $dup"
-                                                write-output "               $output_dir\$sub_dir\$save_name"
-                                                if(Test-path -literalpath "$output_dir\$sub_dir\$save_name")
-                                                {
-                                                    Remove-Item -literalpath "$output_dir\$sub_dir\$save_name" -Force
-                                                }
-                                                write-output "          Duplicate Deleted"
-                                                write-output "PL-Duplicate Deleted: $save_name"
+                                                #No Audio File
+                                                write-output "               No Audio $save_name_gui"
+                                                Move-Item -LiteralPath "$dir\Resources\Cache\video.mp4" "$save_name"
                                             }
-                                        #}
-                                        #catch
-                                        #{
-                                        #    write-output "     Failed3: $media_url"
-                                        #    write-output "PL-Failed3: $media_url"
-                                        #}
-                                    }#Image Doesn't Exist
-                                }#Most Media Check
-                                ##################################################################################
-                                ######Externally Hosted###########################################################
-                                elseif(($media_url -match "redgif") -and ($media_url -match "watch")  -and ($videos_on -eq "True"))
-                                {
-                                    ##################################################################################
-                                    ######Get Sub Page################################################################
-                                    $response = "Failed"
-                                    [string]$sub_url = $media_url
-
-                                    try
-                                    {
-                                        $response = Invoke-WebRequest -Uri $sub_url -UseBasicParsing
-
-                                    }
-                                    catch
-                                    {
-                                        write-output "     Failed External: $media_url"
-                                        write-output "PL-Failed: $media_url" 
+                                        }
                                     }
                                     ##################################################################################
-                                    ######Process Sub Links###########################################################
-                                    if($response -ne "Failed")
+                                    ######Download Standard File #####################################################
+                                    else 
                                     {
-                                        $pattern = '(http[s]?)(:\/\/)([^\s,]+)(?=")'
-                                        $sub_matches = [regex]::Matches($response, $pattern)
-                                        Foreach($external_video in ($sub_matches | Select-Object -Unique))
+                                        Start-BitsTransfer -Source $media_url -Destination "$save_name" -TransferType Download
+                                    }
+
+                                    ##################################################################################
+                                    ######Append Duplicates ##########################################################    
+                                    $script:duplicates.Add("$virgin_media_url","")
+                                    Add-Content "$dir\Resources\Duplicates.csv" "$virgin_media_url"
+
+                                    ##################################################################################
+                                    ######Convert Files to PNG/MP4 ################################################### 
+                                    $save_name = convert_files $save_name
+
+
+                                    ##################################################################################
+                                    ######Rename with Date ###########################################################
+                                    $save_name = rename_file $save_name
+
+
+                                    ##################################################################################
+                                    ######Check Dimensions############################################################
+                                    $dimensions = & cmd /u /c  "$script:ffprobe -i `"$filename`" -v error -select_streams v -show_entries stream=width,height -of csv=p=0:s=x"
+                                    ([int]$width,[int]$height) = $dimensions -split "x"
+
+                                    if($height -lt $min_height)
+                                    {
+                                        write-output "          Height too Small $height < $min_height...Deleted"
+                                        if(Test-path -LiteralPath $save_name)
                                         {
-                                            if(($external_video -match "mp4$") -and (!($external_video -match "mobile")))
+                                            Remove-Item -LiteralPath $save_name -force
+                                        }
+                                        write-output "PL-$save_name Height too Small $height < $min_height...Deleted"
+                                    }
+                                    elseif($width -lt $min_width)
+                                    {
+                                        write-output "          Width too Small $width < $min_width...Deleted"   
+                                        if(Test-path -LiteralPath $save_name)
+                                        {
+                                            Remove-Item -LiteralPath $save_name -force
+                                        }
+                                        write-output "PL-Width too Small $width < $min_width...Deleted"
+                                    }
+                                    
+                                    ##################################################################################
+                                    ######Post-Duplicate Hash Check###################################################
+                                    $hash = Get-FileHash "$save_name" -Algorithm MD5
+                                    $hash = $hash.hash
+                                    if(!($script:file_hashes.contains($hash)))
+                                    {
+                                        $script:file_hashes.Add($hash,"$save_name")
+                                    }
+                                    else
+                                    {
+                                        $dup = $script:file_hashes[$hash]
+                                        write-output "          Duplicate Files:"
+                                        write-output "               $dup"
+                                        write-output "               $save_name"
+                                        if(Test-path -literalpath "$save_name")
+                                        {
+                                            Remove-Item -literalpath "$save_name" -Force
+                                        }
+                                        write-output "          Duplicate Deleted"
+                                        write-output "PL-Duplicate Deleted: $save_name_gui"
+                                        $counter_found--
+                                    }
+                                }#Image Doesn't Exist
+                            }#Most Media Check
+                            ##################################################################################
+                            ######Externally Hosted###########################################################
+                            elseif(($media_url -match "redgif") -and ($media_url -match "watch")  -and ($videos_on -eq "True"))
+                            {
+                                ##################################################################################
+                                ######Get Sub Page################################################################
+                                $response = "Failed"
+                                [string]$sub_url = $media_url
+                                try
+                                {
+                                    #$response = Invoke-WebRequest -Uri $sub_url -UseBasicParsing
+                                    $json_buffer = "$dir\Resources\Cache\Json Sub Buffer.txt"
+                                    if(Test-Path -LiteralPath $json_buffer){Remove-Item -LiteralPath $json_buffer}
+                                    Start-BitsTransfer -Source $sub_url -Destination $json_buffer -TransferType Download
+                                    $response = Get-Content -LiteralPath $json_buffer
+                                }
+                                catch
+                                {
+                                    write-output "     Failed External: $media_url"
+                                    write-output "PL-Failed: $media_url" 
+                                }
+                                ##################################################################################
+                                ######Process Sub Links###########################################################
+                                if($response -ne "Failed")
+                                {
+                                    $pattern = '(http[s]?)(:\/\/)([^\s,]+)(?=")'
+                                    $sub_matches = [regex]::Matches($response, $pattern)
+                                    Foreach($external_video in ($sub_matches | Select-Object -Unique))
+                                    {
+                                        if(($external_video -match "mp4$") -and (!($external_video -match "mobile")))
+                                        {
+                                            $counter++
+                                            $save_name_gui = Split-Path $external_video -Leaf
+                                            $save_name = "$output_dir\$sub_dir\$save_name_gui"
+                                            if(!(Test-Path -literalpath "$save_name"))
                                             {
-                                                $counter++
-                                                $save_name = Split-Path $external_video -Leaf
-                                                if(!(Test-Path -literalpath "$output_dir\$sub_dir\$save_name"))
-                                                {
-                                                    $counter_found++;
-                                                    write-output "     $counter_found = $external_video"
-                                                    write-output "PL-$reddit_sub $counter_found = $save_name"
-                                                    ##################################################################################
-                                                    ######Download Video##############################################################
-                                                    #try
-                                                    #{
-                                                        Start-BitsTransfer -Source $external_video -Destination "$output_dir\$sub_dir\$save_name" -TransferType Download
-                                                        $duplicates.Add("$virgin_media_url","")
-                                                        Add-Content "$dir\Resources\Duplicates.csv" "$virgin_media_url"
-                                                        ##################################################################################
-                                                        ######Post-Duplicate Hash Check###################################################
-                                                        $hash = Get-FileHash "$output_dir\$sub_dir\$save_name"
-                                                        $hash = $hash.hash
-                                                        if(!($file_hashes.contains($hash)))
-                                                        {
-                                                            $file_hashes.Add($hash,"$output_dir\$sub_dir\$save_name")
-                                                        }
-                                                        else
-                                                        {
-                                                            $dup = $file_hashes[$hash]
-                                                            write-output "          Duplicate Files:"
-                                                            write-output "               $dup"
-                                                            write-output "               $output_dir\$sub_dir\$save_name"
-                                                            Remove-Item -literalpath "$output_dir\$sub_dir\$save_name" -Force
-                                                            write-output "          Duplicate Deleted"
-                                                            write-output "PL-Duplicate Deleted: $save_name"
-                                                        }
-                                                    #}
-                                                    #catch
-                                                    #{
-                                                    #    write-output "     Failed $external_video"
-                                                    #    write-output "PL-Failed: $external_video"
-                                                    #}
-                                                }#Video Doesn't Exist
-                                            }#External Video Match
-                                        }#SubMatch loop
-                                    }#Failed Response
-                                }#External Videos
-                            }#Pre-Duplicate Check
-                        }#Match Loop
-                    }#Good Response
-                    write-output "     $counter Items Found $counter_found New"
-                    write-output "PL-$reddit_sub $counter Items Found $counter_found New"
-                    write-output " "
-                    [int]$progress =  ($site_count / $site_total) * 100;
-                    Write-Output "PB-$progress"
-                }#Enabled
-            }#Sites Loop
-            ##################################################################################
-            ######Running Post-Operations#####################################################
-            write-output "-------------------------------------------------------------"
-            Write-Output "Running Post Operations"
-            Write-Output "     Updating Hashes"
-            if(Test-Path -LiteralPath "$dir\Resources\Hashes_temp.csv")
-            {
-                Remove-Item "$dir\Resources\Hashes_temp.csv"
-                
-            }
-            $writer = new-object system.IO.StreamWriter("$dir\Resources\Hashes_temp.csv",$true)
-            foreach($hash in $file_hashes.getEnumerator() | Sort Value -Descending)
-            {
-                $value = $hash.value 
-                $key = $hash.key
-                if(Test-Path -literalpath $hash.value)
-                {
-                    $writer.write("$key,$value`r`n");
-                }
-            }
-            $writer.Close();
-            if(Test-Path -literalpath "$dir\Resources\Hashes_temp.csv")
-            {
-                if(Test-Path -LiteralPath "$dir\Resources\Hashes.csv")
-                {
-                    Remove-Item -LiteralPath "$dir\Resources\Hashes.csv"
-                }
-                Rename-Item -LiteralPath "$dir\Resources\Hashes_temp.csv" "$dir\Resources\Hashes.csv"
-                Write-Output "     Hashes Updated"
-            }
-            write-output "--------------------------------------------------------------------------------------------------------------------------"
-            ##################################################################################
-            ##################################################################################
-            write-output "Sleeping..."
+                                                $counter_found++;
+                                                write-output "     $counter_found = $external_video"
+                                                write-output "PL-$reddit_sub $counter_found = $save_name_gui"
+                                                ##################################################################################
+                                                ######Download Video##############################################################
+                                                Start-BitsTransfer -Source $external_video -Destination "$save_name" -TransferType Download
+                                                $script:duplicates.Add("$virgin_media_url","")
+                                                Add-Content "$dir\Resources\Duplicates.csv" "$virgin_media_url"
 
-            [int]$minute_end = $script:settings["SLEEP_TIMER"]
-            $start = (Get-Date)
-            $end = ($start).Addminutes($minute_end)
-            While($start -lt $end)
+                                                ##################################################################################
+                                                ######Post-Duplicate Hash Check###################################################
+                                                $hash = Get-FileHash "$save_name" -Algorithm MD5
+                                                $hash = $hash.hash
+
+                                                if(!($script:file_hashes.contains($hash)))
+                                                {
+                                                    $script:file_hashes.Add($hash,"$save_name")
+                                                }
+                                                else
+                                                {
+                                                    $dup = $script:file_hashes[$hash]
+                                                    write-output "          Duplicate Files:"
+                                                    write-output "               $dup"
+                                                    write-output "               $save_name"
+                                                    Remove-Item -literalpath "$save_name" -Force
+                                                    write-output "          Duplicate Deleted"
+                                                    write-output "PL-Duplicate Deleted: $save_name_gui"
+                                                    $counter_found--
+                                                }
+                                            }#Video Doesn't Exist
+                                        }#External Video Match
+                                    }#SubMatch loop
+                                }#Failed Response
+                            }#External Videos
+                        }#Pre-Duplicate Check
+                    }#Match Loop
+                }#Good Response
+                write-output "     $counter Items Found $counter_found New"
+                write-output "PL-$reddit_sub $counter Items Found $counter_found New"
+                write-output " "
+                [int]$progress =  ($site_count / $site_total) * 100;
+                Write-Output "PB-$progress"
+            }#Enabled
+        }#Sites Loop
+        ##################################################################################
+        ######Running Post-Operations#####################################################
+        write-output "-------------------------------------------------------------"
+        Write-Output "Running Post Operations"
+        Write-Output "     Updating Hashes"
+        if(Test-Path -LiteralPath "$dir\Resources\Hashes_temp.csv")
+        {
+            Remove-Item "$dir\Resources\Hashes_temp.csv"
+                
+        }
+        $writer = new-object system.IO.StreamWriter("$dir\Resources\Hashes_temp.csv",$true)
+        foreach($hash in $script:file_hashes.getEnumerator() | Sort Value -Descending)
+        {
+            $value = $hash.value 
+            $key = $hash.key
+            if(Test-Path -literalpath $hash.value)
             {
-                Start-Sleep -Seconds 1
-                $start = (Get-Date)         
-                $duration = $end - $start
-                $minutes =  ($duration).minutes
-                $seconds =  ($duration).seconds       
-                [int]$status = (((($end - $start).totalseconds) / ([int]$minute_end * 60)) * 100)
-                if($status -le 0){$status = 0}
-                Write-Output "PB-$status"       
-                write-output "PL-Sleeping... Time Before Next Launch $minutes Minutes $seconds Seconds"
+                $writer.write("$key,$value`r`n");
             }
-        }#Cylce   
-    }#Job
+        }
+        $writer.Close();
+        if(Test-Path -literalpath "$dir\Resources\Hashes_temp.csv")
+        {
+            if(Test-Path -LiteralPath "$dir\Resources\Hashes.csv")
+            {
+                Remove-Item -LiteralPath "$dir\Resources\Hashes.csv"
+            }
+            Rename-Item -LiteralPath "$dir\Resources\Hashes_temp.csv" "$dir\Resources\Hashes.csv"
+            Write-Output "     Hashes Updated"
+        }
+        write-output "--------------------------------------------------------------------------------------------------------------------------"
+        ##################################################################################
+        ##################################################################################
+        write-output "Sleeping..."
+
+        [int]$minute_end = $script:settings["SLEEP_TIMER"]
+        $start = (Get-Date)
+        $end = ($start).Addminutes($minute_end)
+        While($start -lt $end)
+        {
+            Start-Sleep -Seconds 1
+            $start = (Get-Date)         
+            $duration = $end - $start
+            $minutes =  ($duration).minutes
+            $seconds =  ($duration).seconds       
+            [int]$status = (((($end - $start).totalseconds) / ([int]$minute_end * 60)) * 100)
+            if($status -le 0){$status = 0}
+            Write-Output "PB-$status"       
+            write-output "PL-Sleeping... Time Before Next Launch $minutes Minutes $seconds Seconds"
+        }
+    }#Cylce
+}#Job Main
+##################################################################################
+######Rename File (Job)###########################################################
+function rename_file($save_name)
+{
+    $file = Get-Item -LiteralPath $save_name
+    $old_name = $file.FullName
+    $ext = $file.Extension
+    $file_dir = Split-Path  $file.FullName -Parent
+    $file_name = $file.Name
+    $file_name_split = $file_name -split " |\.|_|-"
+    $date = (Get-Date).ToString("yyyy-MM-dd HH.mm.ss")
+
+    $pre = "NA"
+    if($ext -match "PNG$|JPEG$|JPG$")
+    {
+        $pre = "IMG"
+    }
+    if($ext -match "mp4$|mkv$")
+    {
+        $pre = "VID"       
+    }
+    foreach($split in $file_name_split)
+    {
+        if($split.length -gt $longest_word.Length)
+        {
+            $longest_word = $split
+        }
+    }
+    $save_name = "$file_dir\$pre $date $longest_word$ext"
+    if(Test-Path -LiteralPath $save_name)
+    {
+        $count = 0;
+        while($count -lt 100)
+        {
+            $count++
+            $count_buffer = ("$count").PadLeft(3,"0");
+            $save_name = "$file_dir\$pre $date $longest_word $count_buffer$ext"
+            if(!(Test-Path -LiteralPath $save_name))
+            {
+                break;
+            }
+        }
+    }
+    Rename-Item -LiteralPath $old_name $save_name
+    return $save_name
+}
+##################################################################################
+######Convert Files (Job)#########################################################
+function convert_files($filename)
+{
+    write-output "-----------------------"
+    $old_ext = [System.IO.Path]::GetExtension($filename)
+    $new_ext = ".NA"
+    $type = & cmd /u /c  "$script:ffprobe -i `"$filename`" -select_streams v:0 -show_entries stream=codec_name,codec_type -of default=nw=1 -loglevel quiet"
+    if($type -match "name=h264")
+    {
+        $new_ext = ".mp4"
+        if($old_ext -ne ".mp4")
+        {
+            $filename_temp = $filename -replace "$old_ext$","$new_ext"
+            Rename-Item -LiteralPath $filename $filename_temp
+            write-output "Renamed:"
+            write-output "     Old:$filename"
+            write-output "     New:$filename_temp"
+            return $filename_temp #NewName
+        }
+    } 
+    elseif($type -match "name=prores|name=hevc")
+    {
+        Write-Output "Conversion NOT DEVELOPED $filename"
+        return $filename    
+    }
+    elseif($type -match "name=gif")
+    {
+        $new_ext = ".mp4"
+        $filename_temp = $filename -replace "$old_ext$","$new_ext"
+        $count = 0;
+        while($count -lt 100)
+        {
+            $count++;
+            if(($filename -eq $filename_temp) -or (Test-Path $filename_temp))
+            {
+                $filename_temp = $filename_temp -replace "$new_ext$","_$count$new_ext"
+            }
+            else
+            {
+                break
+            }
+        }
+        write-output "Converting:"
+        write-output "     Old:$filename"
+        write-output "     New:$filename_temp"
+        $console = & cmd /u /c  "$script:ffmpeg -i `"$filename`" -hide_banner -loglevel error -movflags faststart -crf 18 -pix_fmt yuv420p -vf  `"scale=trunc(iw/2)*2:trunc(ih/2)*2`" `"$filename_temp`""
+        if(Test-Path -LiteralPath "$filename_temp")
+        {
+            Remove-Item -LiteralPath "$filename"
+            return $filename_temp #NewName
+        }
+    }
+    elseif($type -match "name=png")
+    {
+        $new_ext = ".png"
+        if($old_ext -ne ".png")
+        {
+            $filename_temp = $filename -replace "$old_ext$","$new_ext"
+            Rename-Item -LiteralPath $filename $filename_temp
+            write-output "Renamed:"
+            write-output "     Old:$filename"
+            write-output "     New:$filename_temp"
+            return $filename_temp #NewName
+        }
+    }
+    elseif($type -match "name=mjpeg")
+    {
+        
+        $new_ext = ".png"
+        $filename_temp = $filename -replace "$old_ext$","$new_ext"
+        $count = 0;
+        while($count -lt 100)
+        {
+            $count++;
+            if(($filename -eq $filename_temp) -or (Test-Path $filename_temp))
+            {
+                $filename_temp = $filename_temp -replace "$new_ext$","_$count$new_ext"
+            }
+            else
+            {
+                break
+            }
+        }
+        write-output "Converting:"
+        write-output "     Old:$filename"
+        write-output "     New:$filename_temp"
+        $console = & cmd /u /c  "$script:ffmpeg -i `"$filename`" -hide_banner -loglevel error -crf 18 `"$filename_temp`""
+        if(Test-Path -LiteralPath "$filename_temp")
+        {
+            Remove-Item -LiteralPath "$filename"
+            return $filename_temp #NewName
+        }
+    }
+    return $filename
+    write-output
+}
+##################################################################################
+######Get Duration (JOB)##########################################################
+function get_duration($filename)
+{
+    $duration = & cmd /u /c  "$script:ffprobe -i `"$filename`" -show_entries format=duration -v quiet -of csv=`"p=0`""
+    return $duration 
+}
+##################################################################################
+######Start Job Sequence##########################################################
+job_main   
+}#Job
+############################################################################################################################################################################################################
+#############################################################################################################################################################################################################
     ##################################################################################
     ######Start Job & Display Output##################################################
     $script:load_image_timer = Get-Date
@@ -1785,10 +2212,55 @@ function cycler
     write-host Ended
 }
 ################################################################################
+######Idle Timer################################################################
+Function Idle_Timer
+{
+    ################################################################################
+    ######Track Ticks###############################################################
+    --$Script:CountDown
+
+    ################################################################################
+    ######Form Reszie Events########################################################
+    if(($script:Form_size_w -ne $script:Form.Width) -or ($script:Form_size_h -ne $script:Form.height))
+    {
+        $Script:Timer.Interval = 500
+        $script:locked = 1;
+        $script:Form_size_w = $script:Form.Width
+        $script:Form_size_h = $script:Form.height
+        $script:time_wait = Get-Date
+    }
+    if($script:locked -eq 1)
+    {
+        $difference = (Get-Date) - $script:time_wait       
+        if(($difference.TotalMilliseconds -gt 300))
+        {
+            $script:locked = 2;
+            if($script:Form.Controls.Count -ge 1)
+            {
+                for ($i = $script:Form.Controls.Count - 1; $i -ge 0; $i--) 
+                {
+                    $control = $script:Form.Controls[$i]
+                    $script:Form.Controls.Remove($control)
+                    $control.Dispose()
+                }
+            }
+            $script:locked = 0;
+            $Script:Timer.Interval = $script:settings['CLOCK_SPEED'];
+            main
+            
+        }
+    }
+}
+################################################################################
 ######Initiate Sequence#########################################################
 initial_checks
-load_settings
 main
-#22 July 2023
+#22 July 2023 (3.0)
 #Added Support for some videos not having audio
 #Added Support for some videos not being detected
+
+#27 Nov 2024 (3.5)
+#Changed Site Download method (Fixed Reddit Block)
+#Made Form Resizable
+#Check for FFmpeg/FFprobe dialog
+#
